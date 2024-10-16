@@ -14,46 +14,94 @@ from tcbench.libtcdatasets.constants import (
 )
 
 
-def add_is_private_ip_columns(
-    df: pl.DataFrame, src_ip_colname: str = "src_ip", dst_ip_colname: str = "dst_ip"
-) -> pl.DataFrame:
-    def is_private(ip_addr: str) -> bool:
-        return ipaddress.ip_address(ip_addr).is_private
+def ip_is_private(text: str) -> bool:
+    return ipaddress.ip_address(text).is_private
 
-    df_ip_private = (
+
+def ip_is_multicast(text: str) -> bool:
+    return ipaddress.ip_address(text).is_multicast
+
+
+def ip_is_valid(text: str) -> bool:
+    ip = ipaddress.ip_address(text)
+    return not (
+        ip.is_loopback 
+        | ip.is_reserved 
+        | ip.is_unspecified 
+        | ip.is_link_local 
+    )
+
+
+def add_ip_columns_validation(
+    df: pl.DataFrame, 
+    colname_src_ip: str = "src_ip", 
+    colname_dst_ip: str = "dst_ip"
+) -> pl.DataFrame:
+    return add_is_private_ip_columns(df, colname_src_ip, colname_dst_ip)
+
+
+def add_is_private_ip_columns(
+    df: pl.DataFrame, 
+    colname_src_ip: str = "src_ip", 
+    colname_dst_ip: str = "dst_ip"
+) -> pl.DataFrame:
+    df_flags = (
         pl.concat(
             (
-                df[src_ip_colname].unique().rename("ip_addr"),
-                df[dst_ip_colname].unique().rename("ip_addr"),
+                df[colname_src_ip].unique().rename("ip_addr"),
+                df[colname_dst_ip].unique().rename("ip_addr"),
             )
         )
+        .unique()
         .to_frame()
         .with_columns(
-            pl.col("ip_addr")
-            .map_elements(is_private, return_dtype=pl.Boolean())
-            .alias("is_private")
+            is_private=(
+                pl.col("ip_addr")
+                .map_elements(
+                    ip_is_private, 
+                    return_dtype=pl.Boolean()
+                )
+            ),
+            is_valid=(
+                pl.col("ip_addr")
+                .map_elements(
+                    ip_is_valid, 
+                    return_dtype=pl.Boolean()
+                )
+            ),
+            is_multicast=(
+                pl.col("ip_addr")
+                .map_elements(
+                    ip_is_multicast, 
+                    return_dtype=pl.Boolean()
+                )
+            )
         )
     )
 
-    return (
+    return ( 
         df.join(
-            df_ip_private,
-            left_on=src_ip_colname,
+            df_flags,
+            left_on=colname_src_ip,
             right_on="ip_addr",
             how="left",
         )
-        .rename(
-            {
-                "is_private": f"{src_ip_colname}_is_private",
-            }
-        )
+        .rename({
+            "is_private": f"{colname_src_ip}_is_private",
+            "is_valid": f"{colname_src_ip}_is_valid",
+            "is_multicast": f"{colname_src_ip}_is_multicast",
+        })
         .join(
-            df_ip_private,
-            left_on=dst_ip_colname,
+            df_flags,
+            left_on=colname_dst_ip,
             right_on="ip_addr",
             how="left",
         )
-        .rename({"is_private": f"{dst_ip_colname}_is_private"})
+        .rename({
+            "is_private": f"{colname_dst_ip}_is_private",
+            "is_valid": f"{colname_dst_ip}_is_valid",
+            "is_multicast": f"{colname_dst_ip}_is_multicast",
+        })
     )
 
 
@@ -193,10 +241,20 @@ def get_stats(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def expr_pkts_size_times_dir() -> pl.Expr:
-    return pl.struct(["pkts_size", "pkts_dir"]).map_elements(
-        lambda data: pl.Series(np.multiply(data["pkts_size"], data["pkts_dir"])),
-        return_dtype=pl.List(pl.Int64),
+def expr_pkts_size_times_dir(
+    colname_pkts_size: str = "pkts_size",
+    colname_pkts_dir: str = "pkts_dir",
+) -> pl.Expr:
+    return (
+        pl.struct([colname_pkts_size, colname_pkts_dir]).map_elements(
+            lambda data: pl.Series(
+                np.multiply(
+                    data[colname_pkts_size], 
+                    data[colname_pkts_dir]
+                )
+            ),
+            return_dtype=pl.List(pl.Int64),
+        )
     )
 
 
@@ -289,6 +347,8 @@ def add_flow_stats_by_direction(
     colname_pkts_size_times_dir: str = "pkts_size_times_dir",
     colname_pkts_timestamp: str = "pkts_timestamp",
     colname_pkts_dir: str = "pkts_dir",
+    colname_pkts_size_times_dir_payload: str = None,
+    colname_pkts_is_ack: str = None,
 ) -> pl.DataFrame:
     def _compute_duration(data, direction=1):
         indices = np.where(np.atleast_1d(data["pkts_dir"]) == direction)[0]
@@ -298,53 +358,124 @@ def add_flow_stats_by_direction(
         arr = data["pkts_timestamp"]
         return arr[last_idx] - arr[first_idx]
 
-    return df.with_columns(
-        packets_upload=(
-            pl.col(colname_pkts_size_times_dir).list.eval(
-                pl.element() > 0
-            ).list.sum()
-        ),
-        packets_download=(
-            pl.col(colname_pkts_size_times_dir).list.eval(
-                pl.element() < 0
-            ).list.sum()
-        ),
-        bytes_upload=(
-            pl.col(colname_pkts_size_times_dir).list.eval(
-                pl.when(pl.element() > 0)
-                .then(pl.element())
-                .otherwise(0)
-            ).list.sum()
-        ),
-        bytes_download=(
-            pl.col(colname_pkts_size_times_dir).list.eval(
-                pl.when(pl.element() < 0)
-                .then(-pl.element())
-                .otherwise(0)
-            ).list.sum()
-        ),
-        duration_upload=(
-            pl.struct(
-                colname_pkts_timestamp,
-                colname_pkts_dir,
-            ).map_elements(
-                function=functools.partial(
-                    _compute_duration, 
-                    direction=1
-                ),
-                return_dtype=pl.Float64
+    df = (
+        df.with_columns(
+            packets_upload=(
+                pl.col(colname_pkts_size_times_dir).list.eval(
+                    pl.element() > 0
+                ).list.sum()
+            ),
+            packets_download=(
+                pl.col(colname_pkts_size_times_dir).list.eval(
+                    pl.element() < 0
+                ).list.sum()
+            ),
+            bytes_upload=(
+                pl.col(colname_pkts_size_times_dir).list.eval(
+                    pl.when(pl.element() > 0)
+                    .then(pl.element())
+                    .otherwise(0)
+                ).list.sum()
+            ),
+            bytes_download=(
+                pl.col(colname_pkts_size_times_dir).list.eval(
+                    pl.when(pl.element() < 0)
+                    .then(-pl.element())
+                    .otherwise(0)
+                ).list.sum()
+            ),
+            duration_upload=(
+                pl.struct(
+                    colname_pkts_timestamp,
+                    colname_pkts_dir,
+                ).map_elements(
+                    function=functools.partial(
+                        _compute_duration, 
+                        direction=1
+                    ),
+                    return_dtype=pl.Float64
+                )
+            ),
+            duration_download=(
+                pl.struct(
+                    colname_pkts_timestamp,
+                    colname_pkts_dir,
+                ).map_elements(
+                    function=functools.partial(
+                        _compute_duration, 
+                        direction=-1
+                    ),
+                    return_dtype=pl.Float64
+                )
             )
-        ),
-        duration_download=(
-            pl.struct(
-                colname_pkts_timestamp,
-                colname_pkts_dir,
-            ).map_elements(
-                function=functools.partial(
-                    _compute_duration, 
-                    direction=-1
-                ),
-                return_dtype=pl.Float64
+        )
+    )
+    if colname_pkts_size_times_dir_payload:
+        df = df.with_columns(
+            bytes_payload_upload=(
+                pl.col(colname_pkts_size_times_dir_payload)
+                .list
+                .eval(
+                    pl.when(pl.element() > 0)
+                    .then(pl.element())
+                    .otherwise(0)
+                )
+                .list
+                .sum()
+            ),
+            bytes_payload_download=(
+                pl.col(colname_pkts_size_times_dir_payload)
+                .list
+                .eval(
+                    pl.when(pl.element() < 0)
+                    .then(-pl.element())
+                    .otherwise(0)
+                )
+                .list
+                .sum()
             )
+        )
+    if colname_pkts_is_ack:
+        df = (
+            df.with_columns(
+                pkts_ack_idx=(
+                    expr_pkts_ack_idx(colname_pkts_is_ack, ack_size=True)
+                ),
+                pkts_data_idx=(
+                    expr_pkts_data_idx(colname_pkts_is_ack, ack_size=False)
+                ),
+            )
+            .with_columns(
+                packets_ack=(
+                    pl.col("pkts_ack_idx").list.len()
+                ),
+                packets_ack_upload=(
+                    expr_list_len_upload(colname_pkts_dir, "pkts_ack_idx")
+                ),
+                packets_ack_download=(
+                    expr_list_len_download(colname_pkts_dir, "pkts_ack_idx")
+                ),
+                packets_data=(
+                    pl.col("pkts_data_idx").list.len()
+                ),
+                packets_data_upload=(
+                    expr_list_len_upload(colname_pkts_dir, "pkts_data_idx")
+                ),
+                packets_data_download=(
+                    expr_list_len_download(colname_pkts_dir, "pkts_data_idx")
+                ),
+            )
+        )
+    return df
+
+
+def expr_are_ips_valid() -> pl.Expr:
+    return (
+        (pl.col("src_ip_is_valid"))
+        .and_(pl.col("dst_ip_is_valid"))
+        .and_(
+            pl.col("src_ip_is_private").cast(pl.UInt8()) +
+            pl.col("dst_ip_is_private").cast(pl.UInt8()) 
+            == 1
         )
     )

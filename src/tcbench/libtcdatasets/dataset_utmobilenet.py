@@ -149,6 +149,13 @@ def _parse_raw_csv_worker(
             .with_columns(
                 folder=pl.lit(str(path.parent.name)),
                 fname=pl.lit(str(path.name)),
+                location=(
+                    pl.col("location")
+                    .str
+                    .to_lowercase()
+                    .str
+                    .strip_chars("\\")
+                )
             )
         )
 
@@ -168,7 +175,6 @@ def load_raw_csv(path: pathlib.Path) -> pl.DataFrame:
         DATASET_TYPE.RAW,
     )
     return _parse_raw_csv_worker(path, schema)
-
 
 
 class RawCSVParser:
@@ -269,6 +275,10 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 "Compose flows",
             ),
             SequentialPipelineStage(
+                self._add_ip_columns,
+                "Add IP columns",
+            ),
+            SequentialPipelineStage(
                 self._add_pkts_dir,
                 "Add packets direction",
             ),
@@ -357,7 +367,6 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
             )
         )
 
-
     def _add_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.with_columns(
             timestamp=(
@@ -435,8 +444,8 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 ip1, ip2 = ip2, ip1
                 port1, port2 = port2, port1
             return f"{ip1}:{port1}:{ip2}:{port2}:{proto}"
-            
-        df = (
+
+        return (
             df
             .with_columns(
                 net_tuple=(
@@ -471,6 +480,7 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 pl.col("src_port").alias("pkts_src_port"),
                 pl.col("dst_port").alias("pkts_dst_port"),
                 pl.col("l3_size").alias("pkts_size"),
+                pl.col("l4_size").alias("pkts_size_payload"),
                 pl.col("is_ack").alias("pkts_is_ack"),
                 pl.col("tcp_window_size").alias("pkts_tcp_window_size"),
             )
@@ -493,6 +503,9 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 bytes=(
                     pl.col("pkts_size").list.sum()
                 ),
+                bytes_payload=(
+                    pl.col("pkts_size_payload").list.sum()
+                ),
                 duration=(
                     (
                         pl.col("pkts_timestamp").list.last() 
@@ -503,14 +516,9 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
             .with_row_index("row_id")
         )
 
-        return df
-
-
-    def _add_pkts_dir(self, df: pl.DataFrame) -> pl.DataFrame:
-        # add private ip flags
-        df = curation.add_is_private_ip_columns(df)
-        df = (
-            df
+    def _add_ip_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        return (
+            curation.add_ip_columns_validation(df)
             .with_columns(
                 client_ip=(
                     pl.when(pl.col("src_ip_is_private"))
@@ -520,6 +528,7 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
             )
         )
 
+    def _add_pkts_dir(self, df: pl.DataFrame) -> pl.DataFrame:
         def _define_direction(data):
             arr = data["pkts_src_ip"]
             value = data["client_ip"]
@@ -530,6 +539,15 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                     -1
                 ).astype(np.int8)
             )
+
+        def _reverse_direction_if_needed(data, direction, suffix):
+            if data["src_ip"] != data["client_ip"]:
+                if direction == "src":
+                    direction = "dst"
+                else:
+                    direction = "src"
+            field = f"{direction}_{suffix}"
+            return data[field]
     
         df = (
             df
@@ -543,8 +561,111 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                         function=_define_direction,
                         return_dtype=pl.List(pl.Int8())
                     )
+                ),
+                ip_ports=pl.struct(
+                    "src_ip",
+                    "dst_ip",
+                    "src_port",
+                    "dst_port",
+                    "src_ip_is_private",
+                    "src_ip_is_valid",
+                    "dst_ip_is_private",
+                    "dst_ip_is_valid",
+                    "client_ip",
                 )
             )
+            # fix source/destination order (if needed)
+            .with_columns(
+                src_ip=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="src", 
+                            suffix="ip"
+                        ),
+                        return_dtype=pl.String()
+                    )
+                ),
+                src_port=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="src", 
+                            suffix="port"
+                        ),
+                        return_dtype=pl.UInt32()
+                    )
+                ),
+                dst_ip=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="dst", 
+                            suffix="ip"
+                        ),
+                        return_dtype=pl.String()
+                    )
+                ),
+                dst_port=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="dst", 
+                            suffix="port"
+                        ),
+                        return_dtype=pl.UInt32()
+                    )
+                ),
+                src_ip_is_private=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="src", 
+                            suffix="ip_is_private"
+                        ),
+                        return_dtype=pl.Boolean()
+                    )
+                ),
+                src_ip_is_valid=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="src", 
+                            suffix="ip_is_valid"
+                        ),
+                        return_dtype=pl.Boolean()
+                    )
+                ),
+                dst_ip_is_private=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="dst", 
+                            suffix="ip_is_private"
+                        ),
+                        return_dtype=pl.Boolean()
+                    )
+                ),
+                dst_ip_is_valid=(
+                    pl.col("ip_ports")
+                    .map_elements(
+                        function=functools.partial(
+                            _reverse_direction_if_needed, 
+                            direction="dst", 
+                            suffix="ip_is_valid"
+                        ),
+                        return_dtype=pl.Boolean()
+                    )
+                )
+            )
+            .drop("ip_ports")
         )
         return df
 
@@ -576,11 +697,15 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         stages = [
             SequentialPipelineStage(
                 self._drop_not_valid_handshake,
-                "Filter flows with invalid handshake",
+                "Remove flows with invalid handshake",
+            ),
+            SequentialPipelineStage(
+                self._drop_invalid_ip,
+                "Remove flows with invalid IP address",
             ),
             SequentialPipelineStage(
                 self._drop_dns,
-                "Filter DNS",
+                "Remove DNS",
             ),
             SequentialPipelineStage(
                 self._add_columns,
@@ -609,6 +734,16 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         return df.filter(
             pl.col("is_valid_handshake")
         )
+
+    def _drop_invalid_ip(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.filter(curation.expr_are_ips_valid())
+#            (~pl.col("src_ip_is_valid"))
+#            .or_(~pl.col("dst_ip_is_valid"))
+#            .or_(
+#                pl.col("src_ip_is_private") 
+#                .and_(pl.col("dst_ip_is_private"))
+#            )
+#        )
  
     def _drop_dns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.filter(
@@ -620,11 +755,24 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
             df
             .with_columns(
                 pkts_size_times_dir=(
-                    curation.expr_pkts_size_times_dir()
+                    curation.expr_pkts_size_times_dir(
+                        "pkts_size",
+                        "pkts_dir"
+                    )
+                ),
+                pkts_size_times_dir_payload=(
+                    curation.expr_pkts_size_times_dir(
+                        "pkts_size_payload",
+                        "pkts_dir"
+                    )
                 ),
             )
         )
-        df = curation.add_flow_stats_by_direction(df)
+        df = curation.add_flow_stats_by_direction(
+            df,
+            colname_pkts_size_times_dir_payload="pkts_size_times_dir_payload",
+            colname_pkts_is_ack="pkts_is_ack",
+        )
         return df
 
 class UTMobilenet21(Dataset):

@@ -1,181 +1,351 @@
 raw:
   index: 
     type: i64
-    desc: ''
-    window: flow
+    desc: Row number (starting from 0)
+    window: packet
   frame.number:
     type: i64
-    desc: ''
-    window: flow
+    desc: L2 frame number (starting from 1)
+    window: packet
   frame.time:
     type: str
-    desc: ''
-    window: flow
+    desc: L2 frame timestamp
+    window: packet
   frame.len:
     type: i64
-    desc: ''
-    window: flow
+    desc: L2 frame size
+    window: packet
   frame.cap_len:
     type: i64
-    desc: ''
-    window: flow
+    desc: Cap len
+    window: packet
   sll.pkttype:
     type: i64
-    desc: ''
-    window: flow
+    desc: L2 packet type
+    window: packet
   sll.hatype:
     type: i64
-    desc: ''
-    window: flow
+    desc: L2 address type
+    window: packet
   sll.halen:
     type: i64
-    desc: ''
-    window: flow
+    desc: L2 address len
+    window: packet
   sll.src.eth:
     type: str
-    desc: ''
-    window: flow
+    desc: Source ethernet address
+    window: packet
   sll.unused:
     type: str
-    desc: ''
-    window: flow
+    desc: n.a.
+    window: packet
   sll.etype:
     type: str
-    desc: ''
-    window: flow
+    desc: L2 protocol
+    window: packet
   ip.hdr_len:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP header len
+    window: packet
   ip.dsfield.ecn:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP Explicit Congestion Notification (0 or null)
+    window: packet
   ip.len:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP packet size
+    window: packet
   ip.id:
     type: str
-    desc: ''
-    window: flow
+    desc: IP ID field
+    window: packet
   ip.frag_offset:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP fragmentation offset
+    window: packet
   ip.ttl:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP TTL
+    window: packet
   ip.proto:
     type: f64
-    desc: ''
-    window: flow
+    desc: IP protocol id
+    window: packet
   ip.checksum:
     type: str
-    desc: ''
-    window: flow
+    desc: IP checksum
+    window: packet
   ip.src:
     type: str
-    desc: ''
-    window: flow
+    desc: Source IP address
+    window: packet
   ip.dst:
     type: str
-    desc: ''
-    window: flow
+    desc: Destination IP address
+    window: packet
   tcp.hdr_len:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP header len
+    window: packet
   tcp.len:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP payload size (null for UDP traffic)
+    window: packet
   tcp.srcport:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP source port (null for UDP traffic)
+    window: packet
   tcp.dstport:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP destination port (null for UDP traffic)
+    window: packet
   tcp.seq:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP sequence number (null for UDP traffic)
+    window: packet
   tcp.ack:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP ack number (null for UDP traffic)
+    window: packet
   tcp.flags.ns:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP nonce (null for UDP traffic)
+    window: packet
   tcp.flags.fin:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP FIN flag (null for UDP traffic)
+    window: packet
   tcp.window_size_value:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP window (null for UDP traffic)
+    window: packet
   tcp.checksum:
     type: str
-    desc: ''
-    window: flow
+    desc: TCP checksum (null for UDP traffic)
+    window: packet
   tcp.urgent_pointer:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP urgent pointer (null for UDP traffic)
+    window: packet
   tcp.option_kind:
     type: str
-    desc: ''
-    window: flow
+    desc: TCP option kind (null for UDP traffic)
+    window: packet
   tcp.option_len:
     type: str
-    desc: ''
-    window: flow
+    desc: TCP option len (null for UDP traffic)
+    window: packet
   tcp.options.timestamp.tsval:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP timestamp value (null for UDP traffic)
+    window: packet
   tcp.options.timestamp.tsecr:
     type: f64
-    desc: ''
-    window: flow
+    desc: TCP timestamp echo reply (null for UDP traffic)
+    window: packet
   udp.srcport:
     type: f64
-    desc: ''
-    window: flow
+    desc: UDP source port (null for TCP traffic)
+    window: packet
   udp.dstport:
     type: f64
-    desc: ''
-    window: flow
+    desc: UDP destination port (null for TCP traffic)
+    window: packet
   udp.length:
+    type: f64
+    desc: UDP payload size (null for TCP traffic)
+    window: packet
+  udp.checksum:
+    type: str
+    desc: UDP checksum (null for TCP traffic)
+    window: packet
+  gquic.puflags.rsv:
+    type: str
+    desc: Google QUIC reverved flag (null for TCP traffic)
+    window: packet
+  gquic.packet_number:
+    type: str
+    desc: Google QUIC packet number (null for TCP traffic)
+    window: packet
+  location:
+    type: str
+    desc: Experiment location (err, huston, prather, home, null)
+    window: packet
+  folder:
+    type: str
+    desc: Experiments partition
+    window: experiment
+    lineage: Added when loading the raw CSV
+  fname:
+    type: str
+    desc: Raw CSV filename
+    window: experiment
+    lineage: Added when loading the raw CSV
+
+curate:
+  row_id:
+    type: u32
+    desc: Unique row identified
+    window: flow
+  app:
+    type: str
+    desc: Flow label
+    window: flow
+    lineage: Inferred from filename
+  action:
+    type: str
+    desc: Experiment action
+    window: flow
+    lineage: Inferred from filename
+  src_ip:
+    type: str
+    desc: Source IP
+    window: flow
+  src_port:
+    type: u32
+    desc: Source port
+    window: flow
+  dst_ip:
+    type: str
+    desc: Destination IP
+    window: flow
+  dst_port:
+    type: u32
+    desc: Destination port
+    window: flow
+  proto:
+    type: str
+    desc: tcp or udp
+    window: flow
+  src_ip_is_private:
+    type: bool
+    desc: True if the source IP is private
+    window: flow
+    lineage: Computed from src_ip
+  dst_ip_is_private:
+    type: bool
+    desc: True if the source IP is private
+    window: flow
+    lineage: Computed from dst_ip
+  is_valid_handshake:
+    type: bool
+    desc: True if the first 3 packets do not have payload and have (upload, download, upload) directions
+    window: flow
+    lineage: Computed from pkts_tcp_flags and pkts_size
+
+  duration:
     type: f64
     desc: ''
     window: flow
-  udp.checksum:
-    type: str
+    lineage: Computed from first and last frame.timestamp
+  packets:
+    type: u32
+    desc: Number of packets
+    window: flow
+    lineage: Computed from pkts_size length
+  bytes:
+    type: u32
+    desc: Total bytes (including headers)
+    window: flow
+    lineage: Sum of pkts_size
+  bytes_payload:
+    type: i64
+    desc: Total bytes (excluding headers)
+    window: flow
+    lineage: Computed from tcp or udp payload length
+  packets_upload:
+    type: u32
+    desc: Number of packets uploaded
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  bytes_upload:
+    type: i64
+    desc: Number of bytes uploaded (including headers)
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  bytes_payload_upload:
+    type: i64
+    desc: Number of bytes uploaded (excluding headers)
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  duration_upload:
+    type: f64
+    desc: Duration of upload
+    window: flow
+    lineage: Computed from pkts_timestamp and pkts_dir
+  packets_download:
+    type: u32
+    desc: Number of packets downloaded (including headers)
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  bytes_download:
+    type: i64
+    desc: Number of bytes uploaded (including headers)
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  bytes_payload_download:
+    type: i64
+    desc: Number of bytes uploaded (excluding headers)
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+  duration_download:
+    type: f64
+    desc: Duration of download
+    window: flow
+    lineage: Computed from pkts_timestamp and pkts_dir
+
+  pkts_timestamp:
+    type: list[f64]
+    desc: Series of packets unixtime
+    window: flow
+    lineage: Computed from frame.timestamp
+  pkts_size:
+    type: list[u32]
+    desc: Series of the packets size (including headers)
+    window: flow
+    lineage: Computed from ip.len
+  pkts_dir:
+    type: list[i8]
+    desc: Series of the packets direction (1:upload, -1:download)
+    window: flow
+    lineage: Computed based on src_ip and dst_ip
+  pkts_is_ack:
+    type: list[bool]
     desc: ''
     window: flow
-  gquic.puflags.rsv:
-    type: str
-    desc: ''
+  pkts_tcp_window_size:
+    type: list[u32]
+    desc: Series of the packets TCP window size
     window: flow
-  gquic.packet_number:
-    type: str
-    desc: ''
+    lineage: Computed from tcp.window_size_value
+  pkts_ack_idx:
+    type: list[i64]
+    desc: Series of the indices of ACK packets
     window: flow
-  location:
-    type: str
-    desc: ''
+    lineage: Computed from pkts_size
+  pkts_data_idx:
+    type: list[i64]
+    desc: Series of the indices of data packets
     window: flow
+    lineage: Computed from pkts_size
+  pkts_size_times_dir:
+    type: list[i64]
+    desc: Series of the packet size * packets dir
+    window: flow
+    lineage: Computed from pkts_size and pkts_dir
+
+  partition:
+    type: str
+    desc: Experiment location (err, huston, prather, home, null)
+    window: flow
+    lineage: Rename location
   folder:
     type: str
-    desc: ''
+    desc: Experiments partition
     window: experiment
+    lineage: Added when loading the raw CSV
   fname:
     type: str
-    desc: ''
+    desc: Raw CSV filename
     window: experiment
+    lineage: Added when loading the raw CSV

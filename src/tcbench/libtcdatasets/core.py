@@ -450,6 +450,9 @@ class Dataset:
     def get_schema(self, dataset_type: DATASET_TYPE) -> DatasetSchema:
         return self.metadata.get_schema(dataset_type)
 
+    def get_schema_polars(self, dataset_type: DATASET_TYPE) -> pl.Schema:
+        return self.metadata.get_schema(dataset_type).to_polars()
+
     def install(
         self, 
         no_download:bool = False, 
@@ -582,7 +585,6 @@ class Dataset:
         yield self.__rich__()
         
 
-
 class SequentialPipelineStage:
     def __init__(self, func, name:str = None, **kwargs):
         self.func = func
@@ -594,6 +596,11 @@ class SequentialPipelineStage:
     
     def __repr__(self):
         return f"""{self.__class__.__name__}(name={self.name!r}, func={self.func.__name__}, run_kwargs_keys={", ".join(self.run_kwargs.keys())})"""
+
+
+class SequentialPipelineStageRuntimeError(BaseException):
+    """Exception raised when encountering a problem 
+        when running a PipelineStage"""
 
 
 class SequentialPipeline(UserList):
@@ -640,7 +647,16 @@ class SequentialPipeline(UserList):
             visible=self.progress,
         ) as progress:
             for idx, stage in enumerate(self.data):
-                next_args = stage.run(*next_args)
+                try:
+                    next_args = stage.run(*next_args)
+                except Exception as e:
+                    msg = "Error at stage "
+                    if self.name:
+                        msg = f"Pipeline {self.name!r} @ stage "
+                    msg += f"{idx+1}"
+                    if stage.name:
+                        msg += f" ({stage.name})"
+                    raise SequentialPipelineStageRuntimeError(msg) from e
                 if (
                     idx < len(self) - 1 
                     and not isinstance(next_args, (list, tuple))
@@ -656,8 +672,10 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
         dataset_name: DATASET_NAME, 
         save_to: pathlib.Path,
         progress: bool = True,
+        dset_schema: DatasetSchema = None,
     ):
         self.dataset_name = dataset_name
+        self.dset_schema = dset_schema
         self.save_to = save_to
 
         stages = (
@@ -676,7 +694,7 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
             progress=progress,
         )
 
-    def _compute_stats(self, df):
+    def _compute_stats(self, df) -> Tuple[pl.DataFrame]:
         df_stats = curation.get_stats(df)
         return (df, df_stats)
 
@@ -685,8 +703,14 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
         df: pl.DataFrame, 
         df_stats: pl.DataFrame = None, 
         df_splits: pl.DataFrame = None,
-        fname_prefix: str = "_postprocess"
-    ):
+        fname_prefix: str = "_postprocess",
+        columns: Iterable[str] = None,
+    ) -> Tuple[pl.DataFrame]:
+        if columns is None and self.dset_schema:
+            columns = self.dset_schema.fields
+        if columns:
+            df = df.select(*columns)
+
         fileutils.save_parquet(
             df, 
             self.save_to / f"{fname_prefix}.parquet", 

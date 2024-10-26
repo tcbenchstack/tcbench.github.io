@@ -22,8 +22,9 @@ from tcbench.libtcdatasets import curation
 from tcbench.libtcdatasets.core import (
     Dataset,
     SequentialPipelineStage,
-    SequentialPipeline,
-    DatasetSchema
+#    SequentialPipeline,
+    DatasetSchema,
+    BaseDatasetProcessingPipeline,
 )
 from tcbench.libtcdatasets.constants import (
     DATASET_NAME,
@@ -243,13 +244,19 @@ class BaseParserRawJSON:
         return df
 
 
-class BaseRawPostprocessingPipeline(SequentialPipeline):
+class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
     def __init__(
         self, 
         df_app_metadata: pl.DataFrame,
+        dataset_name: DATASET_NAME,
         save_to: pathlib.Path, 
     ):
-        self.save_to = save_to
+        super().__init__(
+            description="Postprocess raw...",
+            dataset_name=dataset_name,
+            save_to=save_to,
+            progress=True
+        )
         self.df_app_metadata = df_app_metadata
 
         stages = [
@@ -270,21 +277,22 @@ class BaseRawPostprocessingPipeline(SequentialPipeline):
                 name="Compute statistics",
             ),
             SequentialPipelineStage(
-                self._write_parquet_files,
+                functools.partial(
+                    self._write_parquet_files,
+                    fname_prefix="_postprocess"
+                ),
                 name="Write parquet files",
             ),
         ]
-        super().__init__(
-            *stages, 
-            name="Postprocess raw...",
-            progress=True
-        )
+
+        self.clear()
+        self.extend(stages)
 
     def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.rename(_rename_columns(df.columns))
 
     def _add_app_and_background(self, df: pl.DataFrame) -> pl.DataFrame:
-        return (
+        df = (
             df
             # add app column using static metadata
             .join(
@@ -310,6 +318,7 @@ class BaseRawPostprocessingPipeline(SequentialPipeline):
                 )
             )
         )
+        return df
 
     def _add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         # add column: convert proto_id to string (6->tcp, 17->udp)
@@ -321,7 +330,7 @@ class BaseRawPostprocessingPipeline(SequentialPipeline):
             ),
         )
         # add columns: ip addresses private/public
-        df = curation.add_is_private_ip_columns(df)
+        df = curation.add_ip_column_flags(df)
         # add columns: check if tcp handshake is valid
         df = curation.add_is_valid_tcp_handshake_heuristic(
             df, tcp_handshake_size=0, direction_upload=0, direction_download=1
@@ -332,30 +341,34 @@ class BaseRawPostprocessingPipeline(SequentialPipeline):
             .with_row_index(name="row_id")
         )
 
-    def _compute_stats(self, df):
-        df_stats = curation.get_stats(df)
-        return (df, df_stats)
+#    def _compute_stats(self, df):
+#        df_stats = curation.get_stats(df)
+#        return (df, df_stats)
+#
+#    def _write_parquet_files(self, df, df_stats):
+#        df.write_parquet(
+#            self.save_to / "_postprocess.parquet"
+#        )
+#        df_stats.write_parquet(
+#            self.save_to / f"_postprocess_stats.parquet"
+#        )
+#        return df, df_stats
 
-    def _write_parquet_files(self, df, df_stats):
-        df.write_parquet(
-            self.save_to / "_postprocess.parquet"
-        )
-        df_stats.write_parquet(
-            self.save_to / f"_postprocess_stats.parquet"
-        )
-        return df, df_stats
 
-
-class BaseCuratePipeline(SequentialPipeline):
+class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
     def __init__(
         self, 
         dataset_name: DATASET_NAME,
         save_to: pathlib.Path,
         dset_schema: DatasetSchema,
     ):
-        self.dataset_name = dataset_name
-        self.save_to = save_to
-        self.dset_schema = dset_schema
+        super().__init__(
+            description="Curation...",
+            dataset_name=dataset_name,
+            save_to=save_to,
+            dset_schema=dset_schema,
+            progress=True
+        )
 
         stages = [
             SequentialPipelineStage(
@@ -367,6 +380,14 @@ class BaseCuratePipeline(SequentialPipeline):
                 name="Drop background flows"
             ),
             SequentialPipelineStage(
+                self._drop_dns,
+                name="Drop DNS traffic",
+            ),
+            SequentialPipelineStage(
+                self._drop_invalid_ips,
+                name="Drop flows with invalid IPs",
+            ),
+            SequentialPipelineStage(
                 self._adjust_packet_series,
                 name="Adjust packet series",
             ),
@@ -375,7 +396,7 @@ class BaseCuratePipeline(SequentialPipeline):
                 name="Add packet series indices"
             ),
             SequentialPipelineStage(
-                self._add_other_columns,
+                self._add_more_columns,
                 name="Add more columns",
             ),
             SequentialPipelineStage(
@@ -391,19 +412,28 @@ class BaseCuratePipeline(SequentialPipeline):
                 name="Compute statistics",
             ),
             SequentialPipelineStage(
-                self._compute_splits,
+                functools.partial(
+                    self._compute_splits,
+                    num_splits=10,
+                    test_size=0.1,
+                    y_colname="app",
+                    index_colname="row_id",
+                    seed=1,
+                ),
                 name="Compute splits",
             ),
             SequentialPipelineStage(
-                self._write_parquet_files,
+                functools.partial(
+                    self._write_parquet_files,
+                    fname_prefix=str(self.dataset_name),
+                    columns=self.dset_schema.fields,
+                ),
                 name="Write parquet files",
             ),
         ]
-        super().__init__(
-            *stages, 
-            name="Curation...",
-            progress=True
-        )
+
+        self.clear()
+        self.extend(stages)
 
     def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.rename({
@@ -413,8 +443,18 @@ class BaseCuratePipeline(SequentialPipeline):
     def _drop_background(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.filter(pl.col("app") != APP_LABEL_BACKGROUND)
 
+    def _drop_dns(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.filter(
+            ~curation.expr_is_dns_heuristic()
+        )
+
+    def _drop_invalid_ips(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.filter(
+            curation.expr_are_ips_valid()
+        )
+
     def _adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
+        df = df.with_columns(
             # increase packets size to reflect the expected true size
             # for TCP, add 40 bytes
             # for UDP, add 28 bytes
@@ -430,9 +470,10 @@ class BaseCuratePipeline(SequentialPipeline):
                 )
             ),
         )
+        return df
 
     def _add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
+        df = df.with_columns(
             # series with the index of TCP acks packets
             pkts_ack_idx=(
                 pl.when(pl.col("proto") == "tcp")
@@ -452,19 +493,18 @@ class BaseCuratePipeline(SequentialPipeline):
                 .otherwise(curation.expr_pkts_data_idx(ack_size=0))
             ),
         )
+        return df
 
-    def _add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        return (
-            df
-            .with_columns(
+    def _add_more_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        df = df.with_columns(
                 # length of all series
                 pkts_len=(pl.col("pkts_size").list.len()),
                 # flag to indicate if the packet sizes have all packets
                 pkts_is_complete=(pl.col("pkts_size").list.len() == pl.col("packets")),
                 # series pkts_size * pkts_dir
                 pkts_size_times_dir=(curation.expr_pkts_size_times_dir()),
-            )
-            .with_columns(
+        )
+        df = df.with_columns(
                 # number of ack packets
                 packets_ack=(pl.col("pkts_ack_idx").list.len()),
                 # number of ack packets in upload
@@ -486,7 +526,7 @@ class BaseCuratePipeline(SequentialPipeline):
                     curation.expr_list_len_download("pkts_size_times_dir", "pkts_data_idx")
                 ),
             )
-        )
+        return df
 
     def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
@@ -510,50 +550,69 @@ class BaseCuratePipeline(SequentialPipeline):
             df_new = df.filter(pl.col("packets") >= min_pkts)
         return df_new
 
-    def _compute_stats(
-        self, 
-        df: pl.DataFrame
-    ) -> Tuple[pl.DataFrame, pl.DataFrame]:
-        df_stats = curation.get_stats(df)
-        return (df, df_stats)
 
-    def _compute_splits(
-        self, 
-        df: pl.DataFrame, 
-        df_stats: pl.DataFrame
-    ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        from tcbench.modeling import splitting
-        df_splits = splitting.split_monte_carlo(
-            df,
-            y_colname="app",
-            index_colname="row_id", 
-            num_splits=10,
-            seed=1,
-            test_size=0.1,
-        )
-        return (df, df_stats, df_splits)
-
-    def _write_parquet_files(
+class Mirage19RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
+    def __init__(
         self,
-        df: pl.DataFrame,
-        df_stats: pl.DataFrame,
-        df_splits: pl.DataFrame,
-    ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
-        if not self.save_to.exists():
-            self.save_to.mkdir(parents=True)
+        df_app_metadata: pl.DataFrame,
+        save_to: pathlib.Path,
+    ):
+        super().__init__(
+            df_app_metadata,
+            dataset_name=DATASET_NAME.MIRAGE19,
+            save_to=save_to,
+        )
 
-        (   # enforce the order provided in the schema
+        self.replace_stage(
+            "Rename columns",
+            SequentialPipelineStage(
+                self._rename_columns,
+                "Rename columns",
+            )
+        )
+
+    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        df = (
             df
-            .select(*self.dset_schema.fields)
-            .write_parquet(self.save_to / f"{self.dataset_name}.parquet")
+            .rename(_rename_columns(df.columns))
+            .rename({
+                "parent_folder": "device_id",
+                "pkts_l4_size": "pkts_size",
+            })
         )
-        df_stats.write_parquet(
-            self.save_to / f"{self.dataset_name}_stats.parquet"
+        return df
+
+
+class Mirage19CuratePipeline(MirageBaseCuratePipeline):
+    def __init__(
+        self,
+        save_to: pathlib.Path,
+    ):
+        import tcbench
+        dset_schema = (
+            tcbench
+            .datasets_catalog()
+            [DATASET_NAME.MIRAGE19]
+            .get_schema(DATASET_TYPE.CURATE)
         )
-        df_splits.write_parquet(
-            self.save_to / f"{self.dataset_name}_splits.parquet"
+        super().__init__(
+            dataset_name=DATASET_NAME.MIRAGE19,
+            save_to=save_to,
+            dset_schema=dset_schema
         )
-        return df, df_stats, df_splits
+
+        self.replace_stage(
+            "Rename columns",
+            SequentialPipelineStage(
+                self._rename,
+                "Rename columns",
+            )
+        )
+
+    def _rename(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.rename({
+            "label": "android_package_name",
+        })
 
 
 class Mirage19(Dataset):
@@ -567,468 +626,87 @@ class Mirage19(Dataset):
     def _list_raw_json_files(self):
         return list(self.folder_raw.rglob("*.json"))
 
-#    def _parse_raw_json(
-#        self, 
-#        sort_by: Iterable[str],
-#    ) -> pl.DataFrame:
-#        files = self._list_raw_json_files
-#        dset_schema = self.get_schema(DATASET_TYPE.RAW)
-#
-#        with tempfile.TemporaryDirectory() as tmp_folder:
-#            tmp_folder = pathlib.Path(tmp_folder)
-#            func = functools.partial(
-#                _load_raw_json_worker, 
-#                dset_schema=dset_schema, 
-#                save_to=tmp_folder,
-#            )
-#            with (
-#                richutils.Progress(
-#                    description="Parse JSON files...", 
-#                    total=len(files)
-#                ) as progress,
-#                multiprocessing.Pool(processes=2) as pool,
-#            ):
-#                for _ in pool.imap_unordered(func, files):
-#                    progress.update()
-#
-#            with richutils.SpinnerProgress(description="Reload..."):
-#                df = (
-#                    pl.read_ndjson(
-#                        tmp_folder, 
-#                        schema=dset_schema.to_polars()
-#                    )
-#                    .sort(*sort_by)
-#                )
-#        return df
-#
-#    def raw(self) -> pl.DataFrame:
-#        df = self._parse_raw_json(
-#            sort_by=(
-#                "parent_folder", 
-#                "fname", 
-#                "fname_row_idx"
-#            )
-#        )
-#        with richutils.SpinnerProgress(description="Writing parquet files..."):
-#            fileutils.save_parquet(
-#                df, 
-#                save_as=self.folder_raw/f"{self.name}.parquet", 
-#                echo=False
-#            )
-#        return df
     def raw(self) -> pl.DataFrame:
-        parser = BaseParserRawJSON(self.name, self.get_schema(DATASET_TYPE.RAW))
-        return parser.run(
-            *self._list_raw_json_files,
-            sort_by=(
-                "parent_folder", 
-                "fname", 
-                "fname_row_idx"
-            ),
-            save_to=self.folder_raw,
-        )
-
-#    def _raw_postprocess_rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        df = (
-#            df
-#            .rename(_rename_columns(df.columns))
-#            .rename({
-#                "parent_folder": "device_id"
-#            })
-#        )
-#        return df
-
-#    def _raw_postprocess_add_app_and_background(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return (
-#            df
-#            # add app column using static metadata
-#            .join(
-#                self.df_app_metadata,
-#                left_on="label",
-#                right_on="android_package_name",
-#                how="left",
-#            )
-#            .with_columns(
-#                # flows without a recognized label are re-labeled as background
-#                app=(pl.col("app").fill_null(APP_LABEL_BACKGROUND))
-#            )
-#            .with_columns(
-#                # force to background flows with UDP packets of size zero
-#                app=(
-#                    pl.when(
-#                        (pl.col("proto") == "udp").and_(
-#                            pl.col("pkts_size").list.min() == 0
-#                        )
-#                    )
-#                    .then(pl.lit(APP_LABEL_BACKGROUND))
-#                    .otherwise(pl.col("app"))
-#                )
-#            )
-#        )
-
-#    def _raw_postprocess_add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        # add column: convert proto_id to string (6->tcp, 17->udp)
-#        df = df.with_columns(
-#            proto=(
-#                pl.when(pl.col("proto_id").eq(6))
-#                .then(pl.lit("tcp"))
-#                .otherwise(pl.lit("udp"))
-#            ),
-#        )
-#
-#        # add columns: ip addresses private/public
-#        df = curation.add_is_private_ip_columns(df)
-#        # add columns: check if tcp handshake is valid
-#        df = curation.add_is_valid_tcp_handshake_heuristic(
-#            df, tcp_handshake_size=0, direction_upload=0, direction_download=1
-#        )
-#
-#        return (
-#            df
-#            # add a global row_id
-#            .with_row_index(name="row_id")
-#        )
-
-
-#    def _raw_postprocess(self, recompute: bool = False) -> pl.DataFrame:
-#        def _get_stats(df):
-#            df_stats = curation.get_stats(df)
-#            return (df, df_stats)
-#
-#        def _write_parquet_files(tpl):
-#            df, df_stats = tpl
-#            df.write_parquet(
-#                self.folder_raw / "_postprocess.parquet"
-#            )
-#            df_stats.write_parquet(
-#                self.folder_raw / f"_postprocess_stats.parquet"
-#            )
-#            return df, df_stats
-#
-#        # attempt at loading the previously generate raw version
-#        fname = self.folder_raw / f"{self.name}.parquet"
-#        if fname.exists() and not recompute:
-#            return fileutils.load_parquet(fname, echo=False)
-#
-#        df = self.raw()
-#        # ...and triggering postprocessing steps        
-#        df, _ = SequentialPipe(
-#            SequentialPipeStage(
-#                self._raw_postprocess_rename_columns,
-#                name="Rename columns",
-#            ),
-#            SequentialPipeStage(
-#                self._raw_postprocess_add_other_columns,
-#                name="Add columns", 
-#            ),
-#            SequentialPipeStage(
-#                self._raw_postprocess_add_app_and_background,
-#                name="Add metadata",
-#            ),
-#            SequentialPipeStage(
-#                _get_stats,
-#                name="Compute statistics",
-#            ),
-#            SequentialPipeStage(
-#                _write_parquet_files,
-#                name="Write parquet files",
-#            ),
-#            name="Postprocess raw..."
-#        ).run(df) 
-#
-#        return df
-
-    def _raw_postprocess_rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        df = (
-            df
-            .rename(_rename_columns(df.columns))
-            .rename({
-                "parent_folder": "device_id",
-                "pkts_l4_size": "pkts_size",
-            })
-        )
-        return df
-
-    def _raw_postprocess(self) -> pl.DataFrame:
-        self.load(DATASET_TYPE.RAW)
-        pipeline = BaseRawPostprocessingPipeline(
-            self.df_app_metadata,
-            save_to=self.folder_raw
-        )
-        pipeline.replace_stage(
-            "Rename columns",
-            SequentialPipeStage(
-                self._raw_postprocess_rename_columns,
-                "Rename columns",
+        return (
+            BaseParserRawJSON(
+                self.name, 
+                self.get_schema(DATASET_TYPE.RAW)
+            )
+            .run(
+                *self._list_raw_json_files,
+                sort_by=(
+                    "parent_folder", 
+                    "fname", 
+                    "fname_row_idx"
+                ),
+                save_to=self.folder_raw,
             )
         )
-        return pipeline.run(self.df)
 
-    def _curate_rename(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.rename({
-            "label": "android_package_name",
-        })
+    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
+        self.load(DATASET_TYPE.RAW)
+        return (
+            Mirage19RawPostprocessingPipeline(
+                self.df_app_metadata,
+                save_to=self.folder_raw,
+            )
+            .run(self.df)
+        )
 
-#    def _curate_drop_background(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return df.filter(pl.col("app") != APP_LABEL_BACKGROUND)
-#
-#    def _curate_adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return df.with_columns(
-#            # increase packets size to reflect the expected true size
-#            # for TCP, add 40 bytes
-#            # for UDP, add 28 bytes
-#            pkts_size=(
-#                pl.when(pl.col("proto") == "tcp")
-#                .then(pl.col("pkts_size").list.eval(pl.element() + 40))
-#                .otherwise(pl.col("pkts_size").list.eval(pl.element() + 28))
-#            ),
-#            # enforce direction (0/upload: 1, 1/download: -1)
-#            pkts_dir=(
-#                pl.col("pkts_dir").list.eval(
-#                    pl.when(pl.element() == 0).then(1).otherwise(-1)
-#                )
-#            ),
-#        )
-#
-#    def _curate_add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return df.with_columns(
-#            # series with the index of TCP acks packets
-#            pkts_ack_idx=(
-#                pl.when(pl.col("proto") == "tcp")
-#                # for TCP, acks are enforced to 40 bytes
-#                .then(curation.expr_pkts_ack_idx(ack_size=40))
-#                # for UDP, packets are always larger then 0 bytes
-#                # so the following is selecting all indices
-#                .otherwise(curation.expr_pkts_ack_idx(ack_size=0))
-#            ),
-#            # series with the index of data packets
-#            pkts_data_idx=(
-#                pl.when(pl.col("proto") == "tcp")
-#                # for TCP, acks are enforced to 40 bytes
-#                .then(curation.expr_pkts_data_idx(ack_size=40))
-#                # for UDP, packets are always larger then 0 bytes
-#                # so the following is selecting all indices
-#                .otherwise(curation.expr_pkts_data_idx(ack_size=0))
-#            ),
-#        )
-#
-#    def _curate_add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return (df
-#            .with_columns(
-#                # length of all series
-#                pkts_len=(pl.col("pkts_size").list.len()),
-#                # flag to indicate if the packet sizes have all packets
-#                pkts_is_complete=(pl.col("pkts_size").list.len() == pl.col("packets")),
-#                # series pkts_size * pkts_dir
-#                pkts_size_times_dir=(curation.expr_pkts_size_times_dir()),
-#            )
-#            .with_columns(
-#                # number of ack packets
-#                packets_ack=(pl.col("pkts_ack_idx").list.len()),
-#                # number of ack packets in upload
-#                packets_ack_upload=(
-#                    curation.expr_list_len_upload("pkts_size_times_dir", "pkts_ack_idx")
-#                ),
-#                # number of ack packets in download
-#                packets_ack_download=(
-#                    curation.expr_list_len_download("pkts_size_times_dir", "pkts_ack_idx")
-#                ),
-#                # number of data packets
-#                packets_data=(pl.col("pkts_data_idx").list.len()),
-#                # number of ack packets in upload
-#                packets_data_upload=(
-#                    curation.expr_list_len_upload("pkts_size_times_dir", "pkts_data_idx")
-#                ),
-#                # number of ack packets in download
-#                packets_data_download=(
-#                    curation.expr_list_len_download("pkts_size_times_dir", "pkts_data_idx")
-#                ),
-#            )
-#        )
-#
-#    def _curate_drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return df.drop(
-#            [
-#                "pkts_src_port",
-#                "pkts_dst_port",
-#                "pkts_raw_payload",
-#                "labeling_type",
-#            ]
-#        )
-#
-#    def _curate_final_filter(self, df: pl.DataFrame, min_pkts: int = None) -> pl.DataFrame:
-#        df_new = df.filter(
-#            # flows starting with a complete handshake
-#            pl.col("is_valid_handshake")
-#        )
-#
-#        if min_pkts is not None:
-#            # flows with at least a specified number of packets
-#            df_new = df.filter(pl.col("packets") >= min_pkts)
-#        return df_new
-#
-#    def curate(self) -> pl.DataFrame:
-#        def _get_stats(df):
-#            df_stats = curation.get_stats(df)
-#            return (df, df_stats)
-#
-#        def _get_splits(tpl):
-#            df, df_stats = tpl
-#            self.df = df
-#            df_splits = self.compute_splits(
-#                num_splits=10,
-#                test_size=0.1,
-#                seed=1,
-#            )
-#            self.df = None
-#            return (df, df_stats, df_splits)
-#
-#        def _write_parquet_files(tpl):
-#            df, df_stats, df_splits = tpl
-#            folder = self.folder_curate
-#            if not folder.exists():
-#                folder.mkdir(parents=True)
-#            df.write_parquet(folder / f"{self.name}.parquet")
-#            df_stats.write_parquet(
-#                folder / f"{self.name}_stats.parquet"
-#            )
-#            df_splits.write_parquet(
-#                folder / f"{self.name}_splits.parquet"
-#            )
-#            return df, df_stats, df_splits
-#
-#        df = self._raw_postprocess(recompute=False)
-#
-#        self.df, self.df_stats, self.df_splits = SequentialPipe(
-#            SequentialPipeStage(
-#                self._curate_rename,
-#                name="Column renaming",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_drop_background, 
-#                name="Drop background flows"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_adjust_packet_series,
-#                name="Adjust packet series",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_pkt_indices_columns,
-#                name="Add packet series indices"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_other_columns,
-#                name="Add more columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_drop_columns,
-#                name="Drop columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_final_filter,
-#                name="Filter out flows",
-#            ),
-#            SequentialPipeStage(
-#                _get_stats,
-#                name="Compute statistics",
-#            ),
-#            SequentialPipeStage(
-#                _get_splits,
-#                name="Compute splits",
-#            ),
-#            SequentialPipeStage(
-#                _write_parquet_files,
-#                name="Write parquet files",
-#            ),
-#            name="Curation..."
-#        ).run(df)
-#
-#        return self.df
-
-    def curate(self) -> pl.DataFrame:
+    def curate(self, recompute_intermediate: bool = False) -> pl.DataFrame:
         fname = self.folder_raw / "_postprocess.parquet"
-        if not fname.exists():
-            df = self._raw_postprocess()
-        else:
+        if fname.exists() and not recompute_intermediate:
             with richutils.SpinnerProgress(
                 description=f"Load {self.name}/raw postprocess..."
             ):
                 df = fileutils.load_parquet(fname, echo=False)
+        else:
+            df, *_ = self._raw_postprocess()
 
-        pipeline = BaseCuratePipeline(
-            self.name,
-            save_to=self.folder_curate,
-            dset_schema=self.get_schema(DATASET_TYPE.CURATE),
+        self.df, self.df_stats, self.df_splits = (
+            Mirage19CuratePipeline(
+                self.folder_curate
+            )
+            .run(df)
         )
-        self.df, self.df_stats, self.df_splits = pipeline.run(df)
         return df
         
 
-class Mirage22(Dataset):
-    def __init__(self):
-        super().__init__(name=DATASET_NAME.MIRAGE22)
-        self.df_app_metadata = pl.read_csv(
-           DATASETS_RESOURCES_FOLDER / f"{self.name}_app_metadata.csv"
+class Mirage22RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
+    def __init__(
+        self,
+        df_app_metadata: pl.DataFrame,
+        save_to: pathlib.Path
+    ):
+        super().__init__(
+            df_app_metadata,
+            dataset_name=DATASET_NAME.MIRAGE22,
+            save_to=save_to
         )
 
-    @property
-    def _list_raw_json_files(self) -> List[pathlib.Path]:
-        return list(
-            (
-                self.folder_raw 
-                / "MIRAGE-COVID-CCMA-2022" 
-                / "Raw_JSON"
-            ).rglob("*.json")
-        )
-
-#    def install(self, no_download: bool = False) -> pathlib.Path:
-#        subfolder = (
-#            self.install_folder 
-#            / "raw" 
-#            / "MIRAGE-COVID-CCMA-2022" 
-#            / "Raw_JSON"
-#        )
-#        #extra_unpack = (
-#            subfolder / "Discord.zip",
-#            subfolder / "Meet.zip",
-#            subfolder / "Slack.zip",
-#            subfolder / "Zoom.zip",
-#            subfolder / "GotoMeeting.zip",
-#            subfolder / "Messenger.zip",
-#            subfolder / "Teams.zip",
-#            subfolder / "Skype.zip",
-#            subfolder / "Webex.zip",
-#        )
-#        return super().install(no_download, extra_unpack)
-
-#    def raw(self) -> pl.DataFrame:
-#        df = self._parse_raw_json(
-#            sort_by=(
-#                "flow_metadata_BF_device",
-#                "fname", 
-#                "fname_row_idx"
-#            )
-#        )
-#        with richutils.SpinnerProgress(description="Writing parquet files..."):
-#            fileutils.save_parquet(
-#                df, 
-#                save_as=self.folder_raw/f"{self.name}.parquet", 
-#                echo=False
-#            )
-#        return df
-    def raw(self) -> pl.DataFrame:
-        parser = BaseParserRawJSON(self.name, self.get_schema(DATASET_TYPE.RAW))
-        return parser.run(
-            *self._list_raw_json_files,
-            sort_by=(
-                "flow_metadata_BF_device",
-                "fname", 
-                "fname_row_idx"
+        self.replace_stage(
+            "Rename columns",
+            SequentialPipelineStage(
+                self._rename_columns,
+                name="Rename columns",
             ),
-            save_to=self.folder_raw,
+        )
+        self.replace_stage(
+            "Add columns", 
+            SequentialPipelineStage(
+                self._add_other_columns,
+                name="Add columns", 
+            ),
+        )
+        self.insert(
+            1, 
+            SequentialPipelineStage(
+                self._drop_columns,
+                name="Drop columns",
+            ),
         )
 
-    def _raw_postprocess_rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         df = (
             df
             .rename(_rename_columns(df.columns))
@@ -1040,7 +718,7 @@ class Mirage22(Dataset):
         )
         return df
 
-    def _raw_postprocess_drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
             "pkts_is_clear",
             "pkts_heuristic",
@@ -1050,7 +728,6 @@ class Mirage22(Dataset):
             "label_version_code",
             "label_version_name",
             "labeling_type",
-            #"pkts_l4_size",
             "pkts_l4_header_size",
             "pkts_l3_header_size",
             "pkts_raw_payload",
@@ -1058,21 +735,7 @@ class Mirage22(Dataset):
             "pkts_dst_port",
         )
 
-#    def _raw_postprocess_clip_series(self, df: pl.DataFrame, num_packets: int = 30) -> pl.DataFrame:
-#        return df.with_columns(**{
-#            col: pl.col(col).list.head(num_packets)
-#            for col in (
-#                "pkts_timestamp",
-#                "pkts_dir",
-#                "pkts_size",
-#                "pkts_iat",
-#                "pkts_tcp_win_size",
-#                "pkts_tcp_flags",
-#                "pkts_l4_size",
-#            )
-#        })
-
-    def _raw_postprocess_add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         # add column: convert proto_id to string (6->tcp, 17->udp)
         df = df.with_columns(
             proto=(
@@ -1083,7 +746,7 @@ class Mirage22(Dataset):
         )
 
         # add columns: ip addresses private/public
-        df = curation.add_is_private_ip_columns(df)
+        df = curation.add_ip_column_flags(df)
         # add columns: check if tcp handshake is valid
         df = curation.add_is_valid_tcp_handshake_from_flags(
             df, 
@@ -1101,69 +764,59 @@ class Mirage22(Dataset):
             .with_row_index(name="row_id")
         )
 
-    def _raw_postprocess(self) -> pl.DataFrame:
-        _ = self.load(DATASET_TYPE.RAW)
-        df = self.df
 
-        pipeline = BaseRawPostprocessingPipeline(
-            self.df_app_metadata,
-            self.folder_raw,
+class Mirage22CuratePipeline(MirageBaseCuratePipeline):
+    def __init__(
+        self,
+        save_to: pathlib.Path
+    ):
+        import tcbench
+        dset_schema = (
+            tcbench.datasets_catalog()
+            [DATASET_NAME.MIRAGE22]
+            .get_schema(DATASET_TYPE.CURATE)
         )
-        pipeline.replace_stage(
-            "Rename columns",
-            SequentialPipeStage(
-                self._raw_postprocess_rename_columns,
-                name="Rename columns",
+        super().__init__(
+            dataset_name=DATASET_NAME.MIRAGE22,
+            save_to=save_to,
+            dset_schema=dset_schema,
+        )
+
+        self.replace_stage(
+            "Adjust packet series",
+            SequentialPipelineStage(
+                self._adjust_packet_series,
+                name="Adjust packet series",
             ),
         )
-        pipeline.replace_stage(
-            "Add columns", 
-            SequentialPipeStage(
-                self._raw_postprocess_add_other_columns,
-                name="Add columns", 
+        self.replace_stage(
+            "Add packet series indices",
+            SequentialPipelineStage(
+                self._add_pkt_indices_columns,
+                name="Add packet series indices"
             ),
         )
-        pipeline.insert(
-            1, 
-            SequentialPipeStage(
-                self._raw_postprocess_drop_columns,
+        self.replace_stage(
+            "Drop columns",
+            SequentialPipelineStage(
+                self._drop_columns,
                 name="Drop columns",
-            ),
+            )
         )
-        return pipeline.run(df)
 
-    def _curate_adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.with_columns(
+    def _adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
+        df = df.with_columns(
             # enforce direction (0/upload: 1, 1/download: -1)
             pkts_dir=(
                 pl.col("pkts_dir").list.eval(
                     pl.when(pl.element() == 0).then(1).otherwise(-1)
                 )
-            ),
+            )
         )
+        return df
 
-    def _curate_add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-#        return df.with_columns(
-#            # series with the index of TCP acks packets
-#            pkts_ack_idx=(
-#                pl.when(pl.col("proto") == "tcp")
-#                # for TCP, acks are enforced to 40 bytes
-#                .then(curation.expr_pkts_ack_idx("pkts_l4_size", ack_size=0))
-#                # for UDP, packets are always larger then 0 bytes
-#                # so the following is selecting all indices
-#                .otherwise(curation.expr_pkts_ack_idx("pkts_l4_size", ack_size=-1))
-#            ),
-#            # series with the index of data packets
-#            pkts_data_idx=(
-#                pl.when(pl.col("proto") == "tcp")
-#                # for TCP, acks are enforced to 40 bytes
-#                .then(curation.expr_pkts_data_idx("pkts_l4_size", ack_size=0))
-#                # for UDP, packets are always larger then 0 bytes
-#                # so the following is selecting all indices
-#                .otherwise(curation.expr_pkts_data_idx("pkts_l4_size", ack_size=-1))
-#            ),
-#        )
-        return df.with_columns(
+    def _add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        df = df.with_columns(
             # series with the index of TCP acks packets
             pkts_ack_idx=(
                 pl.when(pl.col("proto") == "tcp")
@@ -1203,211 +856,72 @@ class Mirage22(Dataset):
                 )
             )
         )
+        return df
 
-    def _curate_drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
             "pkts_l4_size",
             "proto_id",
         )
 
 
-#    def curate(self) -> pl.DataFrame:
-#        def _get_stats(df):
-#            df_stats = curation.get_stats(df)
-#            return (df, df_stats)
-#
-#        def _get_splits(tpl):
-#            df, df_stats = tpl
-#            self.df = df
-#            df_splits = self.compute_splits(
-#                num_splits=10,
-#                test_size=0.1,
-#                seed=1,
-#            )
-#            self.df = None
-#            return (df, df_stats, df_splits)
-#
-#        def _write_parquet_files(tpl):
-#            df, df_stats, df_splits = tpl
-#            folder = self.folder_curate
-#            if not folder.exists():
-#                folder.mkdir(parents=True)
-#            df.write_parquet(folder / f"{self.name}.parquet")
-#            df_stats.write_parquet(
-#                folder / f"{self.name}_stats.parquet"
-#            )
-#            df_splits.write_parquet(
-#                folder / f"{self.name}_splits.parquet"
-#            )
-#            return df, df_stats, df_splits
-#
-#        df = self._raw_postprocess() 
-#
-#        self.df, self.df_stats, self.df_splits = SequentialPipe(
-#            #SequentialPipeStage(
-#            #    self._curate_rename,
-#            #    name="Column renaming",
-#            #),
-#            SequentialPipeStage(
-#                self._curate_drop_background, 
-#                name="Drop background flows"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_adjust_packet_series,
-#                name="Adjust packet series",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_pkt_indices_columns,
-#                name="Add packet series indices"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_other_columns,
-#                name="Add more columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_drop_columns,
-#                name="Drop columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_final_filter,
-#                name="Filter out flows",
-#            ),
-#            SequentialPipeStage(
-#                _get_stats,
-#                name="Compute statistics",
-#            ),
-#            SequentialPipeStage(
-#                _get_splits,
-#                name="Compute splits",
-#            ),
-#            SequentialPipeStage(
-#                _write_parquet_files,
-#                name="Write parquet files",
-#            ),
-#            name="Curation..."
-#        ).run(df)
-#
-#        return self.df
-
-
-    def curate(self) -> pl.DataFrame:
-        fname = self.folder_raw / "_postprocess.parquet"
-        if not fname.exists():
-            df = self._raw_postprocess()
-        else:
-            with richutils.SpinnerProgress(
-                description=f"Load {self.name}/raw postprocess..."
-            ):
-                df = fileutils.load_parquet(fname, echo=False)
-
-        pipeline = BaseCuratePipeline(
-            self.name,
-            save_to=self.folder_curate,
-            dset_schema=self.get_schema(DATASET_TYPE.CURATE),
+class Mirage22(Dataset):
+    def __init__(self):
+        super().__init__(name=DATASET_NAME.MIRAGE22)
+        self.df_app_metadata = pl.read_csv(
+           DATASETS_RESOURCES_FOLDER / f"{self.name}_app_metadata.csv"
         )
-        pipeline.replace_stage(
-            "Adjust packet series",
-            SequentialPipelineStage(
-                self._curate_adjust_packet_series,
-                name="Adjust packet series",
+
+    @property
+    def _list_raw_json_files(self) -> List[pathlib.Path]:
+        return list(
+            (
+                self.folder_raw 
+                / "MIRAGE-COVID-CCMA-2022" 
+                / "Raw_JSON"
+            ).rglob("*.json")
+        )
+
+    def raw(self) -> pl.DataFrame:
+        parser = BaseParserRawJSON(
+            self.name, 
+            self.get_schema(DATASET_TYPE.RAW)
+        )
+        return parser.run(
+            *self._list_raw_json_files,
+            sort_by=(
+                "flow_metadata_BF_device",
+                "fname", 
+                "fname_row_idx"
             ),
+            save_to=self.folder_raw,
         )
-        pipeline.replace_stage(
-            "Add packet series indices",
-            SequentialPipelineStage(
-                self._curate_add_pkt_indices_columns,
-                name="Add packet series indices"
-            ),
-        )
-        pipeline.replace_stage(
-            "Drop columns",
-            SequentialPipelineStage(
-                self._curate_drop_columns,
-                name="Drop columns",
+
+    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
+        _ = self.load(DATASET_TYPE.RAW)
+        df = self.df
+        return (
+            Mirage22RawPostprocessingPipeline(
+                self.df_app_metadata,
+                save_to=self.folder_raw
             )
+            .run(df)
         )
 
-        self.df, self.df_stats, self.df_splits = pipeline.run(df)
+    def curate(self, recompute_intermediate: bool = True) -> pl.DataFrame:
+        fname = self.folder_raw / "_postprocess.parquet"
+        if recompute_intermediate or not fname.exists():
+            self._raw_postprocess()
+
+        with richutils.SpinnerProgress(
+            description=f"Load {self.name}/raw postprocess..."
+        ):
+            df = fileutils.load_parquet(fname, echo=False)
+
+        self.df, self.df_stats, self.df_splits = (
+            Mirage22CuratePipeline(
+                self.folder_curate
+            )
+            .run(df)
+        )
         return self.df
-            
-
-        #def _curate_adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
-        #def _curate_add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        #def _curate_drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-
-#            SequentialPipelineStage(
-#                self._drop_background, 
-#                name="Drop background flows"
-#            ),
-#            SequentialPipelineStage(
-#                self._add_other_columns,
-#                name="Add more columns",
-#            ),
-#            SequentialPipelineStage(
-#                self._final_filter,
-#                name="Filter out flows",
-#            ),
-#            SequentialPipelineStage(
-#                self._compute_stats,
-#                name="Compute statistics",
-#            ),
-#            SequentialPipelineStage(
-#                self._compute_splits,
-#                name="Compute splits",
-#            ),
-#            SequentialPipelineStage(
-#                self._write_parquet_files,
-#                name="Write parquet files",
-#            ),
-#        ]
-
-
-
-
-
-#            #SequentialPipeStage(
-#            #    self._curate_rename,
-#            #    name="Column renaming",
-#            #),
-#            SequentialPipeStage(
-#                self._curate_drop_background, 
-#                name="Drop background flows"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_adjust_packet_series,
-#                name="Adjust packet series",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_pkt_indices_columns,
-#                name="Add packet series indices"
-#            ),
-#            SequentialPipeStage(
-#                self._curate_add_other_columns,
-#                name="Add more columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_drop_columns,
-#                name="Drop columns",
-#            ),
-#            SequentialPipeStage(
-#                self._curate_final_filter,
-#                name="Filter out flows",
-#            ),
-#            SequentialPipeStage(
-#                _get_stats,
-#                name="Compute statistics",
-#            ),
-#            SequentialPipeStage(
-#                _get_splits,
-#                name="Compute splits",
-#            ),
-#            SequentialPipeStage(
-#                _write_parquet_files,
-#                name="Write parquet files",
-#            ),
-#            name="Curation..."
-
-
-
-
-

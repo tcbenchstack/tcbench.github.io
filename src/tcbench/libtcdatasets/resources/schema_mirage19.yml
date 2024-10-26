@@ -570,11 +570,21 @@ curate:
     desc: 'True if the source IP is private'
     window: flow
     lineage: Computed from src_ip
+  src_ip_is_multicast:
+    type: bool
+    desc: True if the source IP is multicast
+    window: flow
+    lineage: Computed from src_ip
   dst_ip_is_private:
     type: bool
     desc: 'True if the destination IP is private'
     window: flow
     lineage: Computed from dst_ip
+  dst_ip_is_multicast:
+    type: bool
+    desc: True if the destination IP is multicast
+    window: flow
+    lineage: Compute from dst_ip
   is_valid_handshake:
     type: bool
     desc: 'True if the first 3 packets do not have payload and are upload/download/upload'

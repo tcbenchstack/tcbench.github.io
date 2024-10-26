@@ -40,7 +40,7 @@ def add_ip_columns_validation(
     return add_is_private_ip_columns(df, colname_src_ip, colname_dst_ip)
 
 
-def add_is_private_ip_columns(
+def add_ip_column_flags(
     df: pl.DataFrame, 
     colname_src_ip: str = "src_ip", 
     colname_dst_ip: str = "dst_ip"

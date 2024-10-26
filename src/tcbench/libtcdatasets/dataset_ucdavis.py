@@ -50,37 +50,17 @@ def _parse_raw_txt_worker(
         )
     )
 
+
 def load_raw_txt(
     path: pathlib.Path, 
 ) -> pl.DataFrame:
     import tcbench
-    schema = tcbench.get_datasets_polars_schema(
+    schema = tcbench.get_dataset_polars_schema(
         DATASET_NAME.UCDAVIS19,
         DATASET_TYPE.RAW
     )
     return _parse_raw_txt_worker(path, schema)
 
-
-#    df2 = (
-#        pl.DataFrame({
-#            "pkts_timestamp": [df["unixtime"].to_list()],
-#            "pkts_timetofirst": [df["timetofirst"].to_list()],
-#            "pkts_size": [df["packet_size"].to_list()],
-#            "pkts_dir": [df["packet_dir"].to_list()],
-#            "app": path.parent.name.lower().replace(" ", "_"),
-#            "fname": path.name,
-#            "partition": (
-#                path
-#                .parent
-#                .parent
-#                .name
-#                .lower()
-#                .replace(")", "")
-#                .replace("(", "-")
-#            )
-#        })
-#    )
-#    return df2
 
 class RawTXTParser:
     def __init__(self, save_to: pathlib.Path):
@@ -89,7 +69,7 @@ class RawTXTParser:
     def run(self, *paths: Pathlib.Path) -> pl.DataFrame:
         import tcbench
 
-        schema = tcbench.get_datasets_polars_schema(
+        schema = tcbench.get_dataset_polars_schema(
             DATASET_NAME.UCDAVIS19,
             DATASET_TYPE.RAW
         )
@@ -418,21 +398,6 @@ class UCDavis19(Dataset):
                 echo=False
             )
         return self.df
-#        self.df = self._parse_raw()
-#        with richutils.SpinnerProgress(description="Writing parquet files"):
-#            fileutils.save_parquet(
-#                self.df, 
-#                self.folder_raw / f"{self.name}.parquet", 
-#                echo=False
-#            )
-#        return self.df
-#        self.df, self.df_stats = (
-#            RawPostorocessingPipeline(
-#                save_to=self.folder_raw
-#            )
-#            .run(df)
-#        )
-#        return self.df
   
     def _raw_postprocess(self) -> pl.DataFrame:
         self.load(DATASET_TYPE.RAW)
@@ -441,15 +406,15 @@ class UCDavis19(Dataset):
         ).run(self.df)
         return df
         
-    def curate(self, recompute: bool=False) -> pl.DataFrame:
+    def curate(self, recompute_intermediate: bool=False) -> pl.DataFrame:
         fname = self.folder_raw / f"_postprocess.parquet"
-        if not fname.exists() or recompute:
+        if not fname.exists() or recompute_intermediate:
             df = self._raw_postprocess()
-        else:
-            with richutils.SpinnerProgress(
-                description=f"Load {self.name}/raw postprocess..."
-            ):
-                df = fileutils.load_parquet(fname, echo=False)
+
+        with richutils.SpinnerProgress(
+            description=f"Load {self.name}/raw postprocess..."
+        ):
+            df = fileutils.load_parquet(fname, echo=False)
 
         res = CuratePipeline(save_to=self.folder_curate).run(df)
         self.df = res["df"]

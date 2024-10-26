@@ -2,93 +2,124 @@ raw:
   unixtime:
     type: f32
     desc: Packet unixtime
+    window: packet
   timetofirst:
     type: f32
     desc: Time delta with respect to first packet
+    window: packet
   packet_size:
     type: u32
     desc: Packet size (excluding headers)
+    window: packet
   packet_dir:
     type: u8
     desc: "Packet direction (1:upload, 0:download)"
+    window: packet
   folder:
     type: str
     desc: Folder where the file is stored
+    window: packet
     lineage: Added when loading the raw file
   fname:
     type: str
     desc: Filename
+    window: packet
     lineage: Added when loading the raw file
   fname_row_id:
     type: u32
     desc: Unique index of the record in the file
+    window: packet
     lineage: Added when loading the raw file
 
 curate:
   row_id:
     type: u64
     desc: 'Unique row identified'
+    window: flow
+    lineage: Added after recomposing series
   app: 
     type: str
     desc: Application name
+    window: flow
     lineage: Parsed from raw txt filename
   partition:
     type: str
     desc: "One of 'pretraining', 'retraining-script-triggered', 'retraining-human-triggered'"
+    window: flow
     lineage: Parser from folder names
   packets:
     type: u32
     desc: Packets in a flow
+    window: flow
     lineage: Length of pkts_size
   bytes:
     type: u64
     desc: Total bytes
+    window: flow
     lineage: Sum of the pkts_size
   duration:
     type: f64
     desc: Flow duration
+    window: flow
     lineage: Different between first and last pkts_timestamp
   proto:
     type: str
     desc: "Constant to 'udp'"
+    window: flow
+    lineage: Added when composing series
   packets_upload:
     type: u32
     desc: Packets uploaded
+    window: flow
     lineage: Computed from pkts_dir
   bytes_upload:
     type: u64
     desc: Bytes uploaded
+    window: flow
     lineage: Computed from pkts_dir and pkts_size
   duration_upload:
     type: f32
     desc: Duration of upload
+    window: flow
     lineage: Computed from pkts_dir and pkts_timestamp
   packets_download:
     type: u32
     desc: Packets downloaded
+    window: flow
     lineage: Computed from pkts_dir
   bytes_download:
     type: u64
     desc: Bytes downloaded
+    window: flow
     lineage: Computed from pkts_dir and pkts_size
   duration_download:
     type: f32
     desc: Duration of download
+    window: flow
     lineage: Computed from pkts_dir and pkts_timestamp
+
   pkts_timestamp:
     type: list[f32]
     desc: Series of packet timestamp
-    lineage: Rename unixtime
+    window: flow
+    lineage: Transform unixtime into series
   pkts_size:
     type: list[u32]
     desc: Series of packet size
+    window: flow
+    lineage: Transform packet_size into series
   pkts_dir:
     type: list[u8]
     desc: Series of packet direction (1:upload, -1:download)
+    lineage: Transform packet_dir into series
+    window: flow
   pkts_timetofirst:
     type: list[f32]
     desc: Series of packet timestamp relative to first packet
+    window: flow
+    lineage: Transform timetofirst into series
   pkts_size_times_dir:
     type: list[i32]
     desc: Series of packets size and direction 
+    window: flow
     lineage: Compute multiplying pkts_size and pkts_dir

@@ -18,6 +18,8 @@ console = cli.console
 
 PDB_DETECTED="pdb" in sys.modules
 
+BULLET = "•"
+
 
 
 def _rich_table_from_series(ser:pd.Series, columns:List[str], with_total:bool=False) -> rich.table.Table:
@@ -124,7 +126,7 @@ def rich_label(text:str, extra_new_line:bool=False) -> None:
 class SpinnerProgress(richprogress.Progress):
     def __init__(self, description: str = "", visible: bool = True):
         if description:
-            description = f"| {description}"
+            description = f"{BULLET} {description}"
         self.description = description
         self.visible = visible
         self.task_id = None
@@ -163,21 +165,27 @@ class MofNCompleteColumn(richprogress.MofNCompleteColumn):
     def render(self, task) -> richtext.Text:
         completed = int(task.completed)
         total = int(task.total) if task.total is not None else "?"
-        #total_width = len(str(total))
         return richtext.Text(
-            #f"({completed{total_width}d}{self.separator}{total})",
-            f"({completed}{self.separator}{total})",
+            f"({completed + 1}{self.separator}{total})",
             style="progress.download",
         )
 
 class SpinnerAndCounterProgress(richprogress.Progress):
-    def __init__(self, total:int, description: str = "", steps_description: List[str] = None, visible: bool = True):
+    def __init__(
+        self, 
+        total:int, 
+        description: str = "", 
+        steps_description: List[str] = None, 
+        visible: bool = True, 
+        newline_after_update: bool = True
+    ):
         self.visible = visible
         self.description = description
         self.steps_description = steps_description
         self.task_id = None
         self._col_inner_text = None
         self._col_mofn = None
+        self.newline_after_update = newline_after_update
 
         if self.visible: 
             self._col_inner_text = richprogress.TextColumn("")
@@ -186,7 +194,7 @@ class SpinnerAndCounterProgress(richprogress.Progress):
             super().__init__(
                 richprogress.SpinnerColumn(),
                 richprogress.TimeElapsedColumn(),
-                richprogress.TextColumn("|"),
+                richprogress.TextColumn(BULLET),
                 richprogress.TextColumn("[progress.description]{task.description}"),
                 self._col_mofn,
                 self._col_inner_text,
@@ -219,9 +227,17 @@ class SpinnerAndCounterProgress(richprogress.Progress):
 
     def update(self, *args, **kwargs) -> None:
         if self.visible and not PDB_DETECTED:
+            if self.newline_after_update:
+                table = list(self.get_renderables())[0]
+                renderables = [
+                    col._cells[0]
+                    for col in table.columns[1:]
+                ]
+                console.print(*renderables)
             if self.steps_description:
                 self._col_inner_text.text_format = self.steps_description.pop(0)
             super().advance(self.task_id, *args, **kwargs)
+
 
 class FileDownloadProgress(richprogress.Progress):
     def __init__(self, totalbytes: int, visible: bool = True): 
@@ -232,7 +248,7 @@ class FileDownloadProgress(richprogress.Progress):
             richprogress.TotalFileSizeColumn(),
             richprogress.TextColumn("eta"),
             richprogress.TimeRemainingColumn(),
-            richprogress.TextColumn("| Downloading..."),
+            richprogress.TextColumn(f"{BULLET} Downloading..."),
             console=console,
         )
         self.visible = visible
@@ -258,7 +274,7 @@ class FileDownloadProgress(richprogress.Progress):
 class Progress(richprogress.Progress):
     def __init__(self, total: int, description: str = "", visible: bool = True):
         if description:
-            description = f"| {description}"
+            description = f"{BULLET} {description}"
         self.visible = visible
         self.description = description
         self.task_id = None

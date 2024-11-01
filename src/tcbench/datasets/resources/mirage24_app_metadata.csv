@@ -1,0 +1,21 @@
+android_package_name,app,app_category
+com.supercell.clashroyale,clash royale,gaming
+com.crunchyroll.crunchyroid,crunchyroll,gaming
+com.discord,discord,communication
+com.gotomeeting,gotomeeting,business
+org.jitsi.meet,jitsi meet,communication
+com.kakao.talk,kakaotalk,communication
+jp.naver.line.android,line,communication
+com.google.android.apps.meetings,google meet,business
+com.facebook.orca,messenger,communication
+mobisocial.arcade,omlet,gaming
+org.thoughtcrime.securesms,signal,communication
+com.skype.raider,skype,business
+com.slack,slack,communication
+com.microsoft.teams,microsoft teams,business
+org.telegram.messenger,telegram,communication
+com.trueconf.videochat,trueconf,communication
+tv.twitch.android.app,twitch,communication
+com.cisco.webex.meetings,webex meetings,business
+com.whatsapp,whatsapp,communication
+us.zoom.videomeetings,zoom cloud meetings,business

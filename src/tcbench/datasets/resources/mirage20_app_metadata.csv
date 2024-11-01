@@ -1,0 +1,15 @@
+android_package_name,app,app_category
+com.discovery.discoveryvr,discoveryvr,cloudvr
+com.facebook.katana,facebook,video on demand
+in.fulldive.shell,fulldivevr,cloudvr
+com.instagram.android,instagram,short video
+com.facebook.orca,messenger,video chat
+com.netflix.mediaclient,netflix,video on demand
+com.amazon.avod.thirdpartyclient,prime video,video on demand
+com.skype.raider,skype,video chat
+com.snapchat.android,snapchat,short video
+com.zhiliaoapp.musically,tiktok,short video
+com.coaster.roller.vr,vr roller coaster 360,cloudvr
+com.whatsapp,whatsapp,video chat
+com.google.android.youtube,youtube,video on demand
+us.zoom.videomeetings,zoom,video chat

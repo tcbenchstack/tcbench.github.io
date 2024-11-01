@@ -76,6 +76,7 @@ def get_config():
 from tcbench.libtcdatasets.catalog import (
     datasets_catalog,
     get_dataset,
+    get_dataset_schema,
     get_dataset_polars_schema,
 )
 from tcbench.libtcdatasets.constants import (

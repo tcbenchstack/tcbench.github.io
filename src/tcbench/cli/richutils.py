@@ -177,7 +177,7 @@ class SpinnerAndCounterProgress(richprogress.Progress):
         description: str = "", 
         steps_description: List[str] = None, 
         visible: bool = True, 
-        newline_after_update: bool = True
+        newline_after_update: bool = False
     ):
         self.visible = visible
         self.description = description
@@ -211,7 +211,9 @@ class SpinnerAndCounterProgress(richprogress.Progress):
                 super().update(self.task_id)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            return False
         if self.visible and not PDB_DETECTED:
             description = self.description
             if description:
@@ -220,6 +222,7 @@ class SpinnerAndCounterProgress(richprogress.Progress):
                 self.columns = (*self.columns[1:4], *self.columns[5:])
                 super().update(self.task_id, description=description)
             self.stop()
+        return True    
 
     def update_total(self, total: int) -> None:
         if self.visible and not PDB_DETECTED:

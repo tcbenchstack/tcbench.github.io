@@ -5,7 +5,7 @@ import rich.box as richbox
 
 import polars as pl
 
-from typing import Dict, Any, Iterable, List
+from typing import Dict, Any, Iterable, List, Tuple
 from collections import UserDict, UserList, OrderedDict
 
 import abc
@@ -124,6 +124,10 @@ class DatasetMetadata:
         table.add_section()
         ###
         table.add_row(
+            ":triangular_ruler: Raw data size:", 
+            self.raw_data_size,
+        )
+        table.add_row(
             ":link: Raw data URL:", 
             f"[link={self.raw_data_url}]{self.raw_data_url}[/link]"
         )
@@ -140,10 +144,6 @@ class DatasetMetadata:
                     for name, md5 in self.raw_data_md5.items()
                 )
             )
-        table.add_row(
-            ":triangular_ruler: Raw data size:", 
-            self.raw_data_size,
-        )
         table.add_section()
         ####
         if self.curated_data_url:
@@ -380,7 +380,7 @@ class DatasetSchema:
             pad_edge=False
         )
         table.add_column("ID")
-        table.add_column("Field")
+        table.add_column("Field", overflow="fold")
         table.add_column("Type")
         table.add_column("Window")
         table.add_column("Description", overflow="fold")
@@ -645,6 +645,7 @@ class SequentialPipeline(UserList):
             steps_description=names,
             total=len(self),
             visible=self.progress,
+            newline_after_update=True,
         ) as progress:
             for idx, stage in enumerate(self.data):
                 try:
@@ -672,19 +673,19 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
         dataset_name: DATASET_NAME, 
         save_to: pathlib.Path,
         progress: bool = True,
-        dset_schema: DatasetSchema = None,
+        dataset_schema: DatasetSchema = None,
     ):
         self.dataset_name = dataset_name
-        self.dset_schema = dset_schema
+        self.dataset_schema = dataset_schema
         self.save_to = save_to
 
         stages = (
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 name="Compute statistics",
             ),
             SequentialPipelineStage(
-                self._write_parquet_files,
+                self.write_parquet_files,
                 name="Write parquet files",
             ),
         )
@@ -694,11 +695,11 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
             progress=progress,
         )
 
-    def _compute_stats(self, df) -> Tuple[pl.DataFrame]:
+    def compute_stats(self, df) -> Tuple[pl.DataFrame]:
         df_stats = curation.get_stats(df)
         return (df, df_stats)
 
-    def _write_parquet_files(
+    def write_parquet_files(
         self, 
         df: pl.DataFrame, 
         df_stats: pl.DataFrame = None, 
@@ -706,8 +707,9 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
         fname_prefix: str = "_postprocess",
         columns: Iterable[str] = None,
     ) -> Tuple[pl.DataFrame]:
-        if columns is None and self.dset_schema:
-            columns = self.dset_schema.fields
+
+        if columns is None and self.dataset_schema:
+            columns = self.dataset_schema.fields
         if columns:
             df = df.select(*columns)
 
@@ -730,7 +732,7 @@ class BaseDatasetProcessingPipeline(SequentialPipeline):
             )
         return df, df_stats, df_splits
         
-    def _compute_splits(
+    def compute_splits(
         self, 
         df: pl.DataFrame, 
         *args: Any, 

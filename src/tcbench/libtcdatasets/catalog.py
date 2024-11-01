@@ -12,7 +12,10 @@ from tcbench.libtcdatasets import (
     dataset_ucdavis,
     dataset_utmobilenet,
 )
-from tcbench.libtcdatasets.core import Dataset
+from tcbench.libtcdatasets.core import (
+    Dataset, 
+    DatasetSchema
+)
 
 from tcbench.libtcdatasets.constants import (
     DATASET_NAME,
@@ -21,7 +24,9 @@ from tcbench.libtcdatasets.constants import (
 _DATASET_NAME_TO_CLASS = {
     DATASET_NAME.UCDAVIS19: dataset_ucdavis.UCDavis19,
     DATASET_NAME.MIRAGE19: dataset_mirage.Mirage19,
+    DATASET_NAME.MIRAGE20: dataset_mirage.Mirage20,
     DATASET_NAME.MIRAGE22: dataset_mirage.Mirage22,
+    DATASET_NAME.MIRAGE24: dataset_mirage.Mirage24,
     DATASET_NAME.UTMOBILENET21: dataset_utmobilenet.UTMobilenet21
 }
 
@@ -62,8 +67,14 @@ def datasets_catalog() -> DatasetsCatalog:
 def get_dataset(name: DATASET_NAME) -> Dataset:
     return DatasetsCatalog()[name]
 
+def get_dataset_schema(
+    dset_name: DATASET_NAME, 
+    dset_type: DATASET_TYPE
+) -> DatasetSchema:
+    return get_dataset(dset_name).get_schema(dset_type)
+
 def get_dataset_polars_schema(
     dset_name: DATASET_NAME, 
     dset_type: DATASET_TYPE
 ) -> pl.schema.Schema:
-    return get_dataset(dset_name).get_schema(dset_type).to_polars()
+    return get_dataset_schema(dset_name, dset_type)

@@ -495,40 +495,49 @@ raw:
     type: str
     desc: Source IP
     window: flow
+    lineage: Added when parsing
   src_port:
     type: u32
     desc: Source Port
     window: flow
+    lineage: Added when parsing
   dst_ip:
     type: str
     desc: Destination IP
     window: flow
+    lineage: Added when parsing
   dst_port:
     type: u32
     desc: Destination Port
     window: flow
+    lineage: Added when parsing
   proto_id:
     type: u32
     desc: Protocol identifier (6=TCP, 17=UDP)
     window: flow
+    lineage: Added when parsing
   parent_folder:
     type: str
     desc: Device name used for the experiment
     window: flow
+    lineage: Added when parsing
   fname:
     type: str
     desc: File name of the experiment
     window: flow
+    lineage: Added when parsing
   fname_row_idx:
     type: u64
     desc: Index of the flow in the raw json
     window: flow 
+    lineage: Added when parsing
 
 curate:
   row_id:
     type: u32
     desc: 'Unique row identified'
     window: flow
+    lineage: Added when coalescing all JSON files
   android_package_name:
     type: str
     desc: 'Android package name of the app'

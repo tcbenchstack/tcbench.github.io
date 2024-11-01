@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque, OrderedDict
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 
 import pathlib
 import json
@@ -10,6 +10,8 @@ import tempfile
 import functools
 import math
 import ipaddress
+import os
+import shutil
 
 from multiprocessing import get_context
 
@@ -22,7 +24,6 @@ from tcbench.libtcdatasets import curation
 from tcbench.libtcdatasets.core import (
     Dataset,
     SequentialPipelineStage,
-#    SequentialPipeline,
     DatasetSchema,
     BaseDatasetProcessingPipeline,
 )
@@ -65,33 +66,38 @@ def _reformat_json_entry(
 
 def _json_entry_to_dataframe(
     json_entry: Dict[str, Any], 
-    dset_schema: DatasetSchema
+    dataset_schema: DatasetSchema
 ) -> pl.DataFrame:
     """Create a DataFrame by flattening the JSON nested structure
     chaining partial names via "_"
     """
-    json_entry = _reformat_json_entry(json_entry, dset_schema.fields)
+    json_entry = _reformat_json_entry(json_entry, dataset_schema.fields)
     for key, value in json_entry.items():
         if value == "NaN":
             value = np.nan
         # Note: enforce values to be list for pl.DataFrame conversion
         json_entry[key] = [value]
-    return pl.DataFrame(json_entry, schema=dset_schema.to_polars())
+    return pl.DataFrame(json_entry, schema=dataset_schema.to_polars())
 
 
-def _load_raw_json_worker(
+def _parse_raw_json_worker(
     fname: pathlib.Path, 
-    dset_schema: DatasetSchema, 
-    save_to: pathlib.Path,
+    dataset_schema: DatasetSchema, 
+    folder_json: pathlib.Path,
+    folder_parquet: pathlib.Path,
 ) -> None:
     fname = pathlib.Path(fname)
     with open(fname) as fin:
         data = json.load(fin)
 
-    with open(save_to / f"{fname.parent.name}__{fname.name}", "w") as fout:
+    new_fname_json = f"{fname.parent.name}__{fname.name}"
+    with open(folder_json / new_fname_json, "w") as fout:
         for idx, (flow_id, json_entry) in enumerate(data.items()):
             # adding a few extra columns after parsing raw data
-            json_entry = _reformat_json_entry(json_entry, dset_schema.fields)
+            json_entry = _reformat_json_entry(
+                json_entry, 
+                dataset_schema.fields
+            )
             src_ip, src_port, dst_ip, dst_port, proto_id = \
                 flow_id.split(",")
             json_entry["src_ip"] = src_ip
@@ -101,19 +107,33 @@ def _load_raw_json_worker(
             json_entry["proto_id"] = int(proto_id)
             json_entry["fname"] = fname.stem
             json_entry["fname_row_idx"] = idx
-            if dset_schema.dataset_name == DATASET_NAME.MIRAGE19:
-                json_entry["parent_folder"] = fname.parent.name
+            json_entry["parent_folder"] = fname.parent.name
             json.dump(json_entry, fout)
             fout.write("\n")
 
+    (
+        pl.read_ndjson(
+            folder_json / new_fname_json,
+            schema=dataset_schema.to_polars()
+        )
+        .write_parquet(
+            (folder_parquet / new_fname_json).with_suffix(".parquet")
+        )
+    )
 
-def load_raw_json(fname: pathlib.Path, dataset_name: DATASET_NAME) -> pl.DataFrame:
+    os.unlink(str(folder_json / new_fname_json))
+
+
+def load_raw_json(
+    fname: pathlib.Path, 
+    dataset_name: DATASET_NAME
+) -> pl.DataFrame:
     import tcbench
     fname = pathlib.Path(fname)
     with open(fname) as fin:
         data = json.load(fin)
 
-    dset_schema = (
+    dataset_schema = (
         tcbench
         .datasets_catalog()
         [dataset_name]
@@ -122,7 +142,7 @@ def load_raw_json(fname: pathlib.Path, dataset_name: DATASET_NAME) -> pl.DataFra
 
     l = []
     for idx, (flow_id, json_entry) in enumerate(data.items()):
-        json_entry = _reformat_json_entry(json_entry, dset_schema.fields)
+        json_entry = _reformat_json_entry(json_entry, dataset_schema.fields)
         src_ip, src_port, dst_ip, dst_port, proto_id = \
             flow_id.split(",")
         json_entry["src_ip"] = src_ip
@@ -134,7 +154,7 @@ def load_raw_json(fname: pathlib.Path, dataset_name: DATASET_NAME) -> pl.DataFra
         json_entry["fname_row_idx"] = idx
         if dataset_name == DATASET_NAME.MIRAGE19:
             json_entry["parent_folder"] = fname.parent.name
-        l.append(_json_entry_to_dataframe(json_entry, dset_schema))
+        l.append(_json_entry_to_dataframe(json_entry, dataset_schema))
     return pl.concat(l)
 
 
@@ -182,14 +202,19 @@ def _rename_columns(columns: List[str]) -> Dict[str, str]:
     return rename
 
 
-class BaseParserRawJSON:
-    def __init__(self, name: DATASET_NAME, dset_schema: DatasetSchema):
+class ParserRawJSON:
+    def __init__(self, name: DATASET_NAME):
+        import tcbench
         self.name = name
-        self.dset_schema = dset_schema
+        self.dataset_schema = tcbench.get_dataset_schema(
+            name, 
+            DATASET_TYPE.RAW
+        )
 
     def _parse_raw_json(
         self, 
-        *files: Iterable[pathlib.Path],
+        files: Iterable[pathlib.Path],
+        save_to: pathlib.Path,
         sort_by: Iterable[str] = None,
     ) -> pl.DataFrame:
         if sort_by is None:
@@ -199,12 +224,24 @@ class BaseParserRawJSON:
                 "fname_row_idx"
             )
 
-        with tempfile.TemporaryDirectory() as tmp_folder:
+        save_to = pathlib.Path(save_to)
+        if (save_to / "__tmp__").exists():
+            shutil.rmtree(save_to / "__tmp__", ignore_errors=True)
+        (save_to / "__tmp__").mkdir(parents=True)
+
+        with tempfile.TemporaryDirectory(
+            dir=save_to/"__tmp__"
+        ) as tmp_folder:
             tmp_folder = pathlib.Path(tmp_folder)
+            folder_json = tmp_folder / "json"
+            folder_parquet = tmp_folder / "parquet"
+            folder_json.mkdir(parents=True)
+            folder_parquet.mkdir(parents=True)
             func = functools.partial(
-                _load_raw_json_worker, 
-                dset_schema=self.dset_schema, 
-                save_to=tmp_folder,
+                _parse_raw_json_worker, 
+                dataset_schema=self.dataset_schema, 
+                folder_json=folder_json,
+                folder_parquet=folder_parquet,
             )
             with (
                 richutils.Progress(
@@ -216,35 +253,39 @@ class BaseParserRawJSON:
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
             
-            with richutils.SpinnerProgress(description="Reload..."):
-                df = (
-                    pl.read_ndjson(
-                        tmp_folder, 
-                        schema=self.dset_schema.to_polars()
-                    )
-                    .sort(*sort_by)
+            with richutils.SpinnerAndCounterProgress(
+                description="Write parquet files...",
+                total=2,
+            ) as progress:
+                # recompose individual files into a temporary files
+                fname = tmp_folder / f"{self.name}.parquet"
+                (
+                    pl.read_parquet(folder_parquet)
+                    .write_parquet(fname)
                 )
+                progress.update()
+                # ...and reload the file, apply sort, and save final file
+                df = pl.read_parquet(fname).sort(sort_by)
+                df.write_parquet(save_to / f"{self.name}.parquet")
+                progress.update()
+                # Note: the two steps with intermediate file are
+                # clearly less efficient than doing all operations
+                # in one go, but turned out to be the only way
+                # to process mirage24 on a system with 16GB of memory
+
+        shutil.rmtree(save_to / "__tmp__", ignore_errors=True)
         return df
 
     def run(
         self, 
-        *files: Iterable[pathlib.Path], 
-        save_to: pathlib.Path = None,
+        files: Iterable[pathlib.Path], 
+        save_to: pathlib.Path,
         sort_by: Iterable[str] = None,
     ) -> pl.DataFrame:
-        df = self._parse_raw_json(*files, sort_by=sort_by)
-        if save_to is None:
-            save_to = pathlib.Path(".")
-        with richutils.SpinnerProgress(description="Writing parquet files..."):
-            fileutils.save_parquet(
-                df, 
-                save_as=save_to/f"{self.name}.parquet", 
-                echo=False
-            )
-        return df
+        return self._parse_raw_json(files, save_to=save_to, sort_by=sort_by)
 
 
-class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
+class BaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
     def __init__(
         self, 
         df_app_metadata: pl.DataFrame,
@@ -261,24 +302,28 @@ class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
 
         stages = [
             SequentialPipelineStage(
-                self._rename_columns,
+                self.rename_columns,
                 name="Rename columns",
             ),
             SequentialPipelineStage(
-                self._add_other_columns,
+                self.add_other_columns,
                 name="Add columns", 
             ),
             SequentialPipelineStage(
-                self._add_app_and_background,
+                self.add_android_package_name,
+                name="Add Android package name",
+            ),
+            SequentialPipelineStage(
+                self.add_app_and_background,
                 name="Add metadata",
             ),
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 name="Compute statistics",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                     fname_prefix="_postprocess"
                 ),
                 name="Write parquet files",
@@ -288,16 +333,40 @@ class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
         self.clear()
         self.extend(stages)
 
-    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.rename(_rename_columns(df.columns))
 
-    def _add_app_and_background(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_android_package_name(self, df: pl.DataFrame) -> pl.DataFrame:
+        # Note: the syntax of the labeling is inconsistent between
+        # datasets. For MIRAGE19, MIRAGE20 and MIRAGE22, flow_metadata_BF_label
+        # represents the android package name, but for MIRAGE24 is a mix
+        # between the app name and the android package name. At the same
+        # time, for MIRAGE20, MIRAGE22 and MIRAGE24 flow_metadata_BF_sublabel
+        # is the android package name (with some extra :<suffix>) but
+        # this column is missing for MIRAGE19
+        if self.dataset_name == DATASET_NAME.MIRAGE19:
+            return df.with_columns(
+                android_package_name=pl.col("label")
+            )
+        return df.with_columns(
+            android_package_name=(
+                pl.col("sublabel")
+                .str
+                .to_lowercase()
+                .str
+                .split(":")
+                .list
+                .first()
+            )
+        )
+
+    def add_app_and_background(self, df: pl.DataFrame) -> pl.DataFrame:
         df = (
             df
             # add app column using static metadata
             .join(
                 self.df_app_metadata,
-                left_on="label",
+                left_on="android_package_name",
                 right_on="android_package_name",
                 how="left",
             )
@@ -320,7 +389,7 @@ class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
         )
         return df
 
-    def _add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         # add column: convert proto_id to string (6->tcp, 17->udp)
         df = df.with_columns(
             proto=(
@@ -341,79 +410,64 @@ class MirageBaseRawPostprocessingPipeline(BaseDatasetProcessingPipeline):
             .with_row_index(name="row_id")
         )
 
-#    def _compute_stats(self, df):
-#        df_stats = curation.get_stats(df)
-#        return (df, df_stats)
-#
-#    def _write_parquet_files(self, df, df_stats):
-#        df.write_parquet(
-#            self.save_to / "_postprocess.parquet"
-#        )
-#        df_stats.write_parquet(
-#            self.save_to / f"_postprocess_stats.parquet"
-#        )
-#        return df, df_stats
 
-
-class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
+class BaseCuratePipeline(BaseDatasetProcessingPipeline):
     def __init__(
         self, 
         dataset_name: DATASET_NAME,
         save_to: pathlib.Path,
-        dset_schema: DatasetSchema,
     ):
+        import tcbench
         super().__init__(
             description="Curation...",
             dataset_name=dataset_name,
             save_to=save_to,
-            dset_schema=dset_schema,
+            dataset_schema=(
+                tcbench.get_dataset_schema(dataset_name, DATASET_TYPE.CURATE)
+            ), 
             progress=True
         )
 
         stages = [
             SequentialPipelineStage(
-                self._rename_columns,
-                name="Rename columns",
-            ),
-            SequentialPipelineStage(
-                self._drop_background, 
+                self.drop_background, 
                 name="Drop background flows"
             ),
             SequentialPipelineStage(
-                self._drop_dns,
+                self.drop_dns,
                 name="Drop DNS traffic",
             ),
             SequentialPipelineStage(
-                self._drop_invalid_ips,
+                self.drop_invalid_ips,
                 name="Drop flows with invalid IPs",
             ),
             SequentialPipelineStage(
-                self._adjust_packet_series,
+                self.adjust_packet_series,
                 name="Adjust packet series",
             ),
             SequentialPipelineStage(
-                self._add_pkt_indices_columns,
+                self.add_pkt_indices_columns,
                 name="Add packet series indices"
             ),
             SequentialPipelineStage(
-                self._add_more_columns,
+                self.add_more_columns,
                 name="Add more columns",
             ),
             SequentialPipelineStage(
-                self._drop_columns,
+                self.drop_columns,
                 name="Drop columns",
             ),
             SequentialPipelineStage(
-                self._final_filter,
+                self.final_filter,
                 name="Filter out flows",
             ),
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 name="Compute statistics",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._compute_splits,
+                    self.compute_splits,
                     num_splits=10,
                     test_size=0.1,
                     y_colname="app",
@@ -424,9 +478,9 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                     fname_prefix=str(self.dataset_name),
-                    columns=self.dset_schema.fields,
+                    columns=self.dataset_schema.fields,
                 ),
                 name="Write parquet files",
             ),
@@ -435,25 +489,20 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
         self.clear()
         self.extend(stages)
 
-    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.rename({
-            "label": "android_package_name",
-        })
-
-    def _drop_background(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_background(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.filter(pl.col("app") != APP_LABEL_BACKGROUND)
 
-    def _drop_dns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_dns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.filter(
             ~curation.expr_is_dns_heuristic()
         )
 
-    def _drop_invalid_ips(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_invalid_ips(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.filter(
             curation.expr_are_ips_valid()
         )
 
-    def _adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
+    def adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
             # increase packets size to reflect the expected true size
             # for TCP, add 40 bytes
@@ -472,7 +521,7 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
         )
         return df
 
-    def _add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
             # series with the index of TCP acks packets
             pkts_ack_idx=(
@@ -495,7 +544,7 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
         )
         return df
 
-    def _add_more_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_more_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
                 # length of all series
                 pkts_len=(pl.col("pkts_size").list.len()),
@@ -528,7 +577,7 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
             )
         return df
 
-    def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
             [
                 "pkts_src_port",
@@ -539,7 +588,11 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
             ]
         )
 
-    def _final_filter(self, df: pl.DataFrame, min_pkts: int = None) -> pl.DataFrame:
+    def final_filter(
+        self, 
+        df: pl.DataFrame, 
+        min_pkts: int = None
+    ) -> pl.DataFrame:
         df_new = df.filter(
             # flows starting with a complete handshake
             pl.col("is_valid_handshake")
@@ -551,180 +604,44 @@ class MirageBaseCuratePipeline(BaseDatasetProcessingPipeline):
         return df_new
 
 
-class Mirage19RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
+class ExtendedRawPostprocessingPipeline(BaseRawPostprocessingPipeline):
     def __init__(
         self,
-        df_app_metadata: pl.DataFrame,
-        save_to: pathlib.Path,
-    ):
-        super().__init__(
-            df_app_metadata,
-            dataset_name=DATASET_NAME.MIRAGE19,
-            save_to=save_to,
-        )
-
-        self.replace_stage(
-            "Rename columns",
-            SequentialPipelineStage(
-                self._rename_columns,
-                "Rename columns",
-            )
-        )
-
-    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
-        df = (
-            df
-            .rename(_rename_columns(df.columns))
-            .rename({
-                "parent_folder": "device_id",
-                "pkts_l4_size": "pkts_size",
-            })
-        )
-        return df
-
-
-class Mirage19CuratePipeline(MirageBaseCuratePipeline):
-    def __init__(
-        self,
-        save_to: pathlib.Path,
-    ):
-        import tcbench
-        dset_schema = (
-            tcbench
-            .datasets_catalog()
-            [DATASET_NAME.MIRAGE19]
-            .get_schema(DATASET_TYPE.CURATE)
-        )
-        super().__init__(
-            dataset_name=DATASET_NAME.MIRAGE19,
-            save_to=save_to,
-            dset_schema=dset_schema
-        )
-
-        self.replace_stage(
-            "Rename columns",
-            SequentialPipelineStage(
-                self._rename,
-                "Rename columns",
-            )
-        )
-
-    def _rename(self, df: pl.DataFrame) -> pl.DataFrame:
-        return df.rename({
-            "label": "android_package_name",
-        })
-
-
-class Mirage19(Dataset):
-    def __init__(self):
-        super().__init__(name=DATASET_NAME.MIRAGE19)
-        self.df_app_metadata = pl.read_csv(
-            DATASETS_RESOURCES_FOLDER / f"{self.name}_app_metadata.csv"
-        )
-
-    @property
-    def _list_raw_json_files(self):
-        return list(self.folder_raw.rglob("*.json"))
-
-    def raw(self) -> pl.DataFrame:
-        return (
-            BaseParserRawJSON(
-                self.name, 
-                self.get_schema(DATASET_TYPE.RAW)
-            )
-            .run(
-                *self._list_raw_json_files,
-                sort_by=(
-                    "parent_folder", 
-                    "fname", 
-                    "fname_row_idx"
-                ),
-                save_to=self.folder_raw,
-            )
-        )
-
-    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
-        self.load(DATASET_TYPE.RAW)
-        return (
-            Mirage19RawPostprocessingPipeline(
-                self.df_app_metadata,
-                save_to=self.folder_raw,
-            )
-            .run(self.df)
-        )
-
-    def curate(self, recompute_intermediate: bool = False) -> pl.DataFrame:
-        fname = self.folder_raw / "_postprocess.parquet"
-        if fname.exists() and not recompute_intermediate:
-            with richutils.SpinnerProgress(
-                description=f"Load {self.name}/raw postprocess..."
-            ):
-                df = fileutils.load_parquet(fname, echo=False)
-        else:
-            df, *_ = self._raw_postprocess()
-
-        self.df, self.df_stats, self.df_splits = (
-            Mirage19CuratePipeline(
-                self.folder_curate
-            )
-            .run(df)
-        )
-        return df
-        
-
-class Mirage22RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
-    def __init__(
-        self,
+        dataset_name: DATASET_NAME,
         df_app_metadata: pl.DataFrame,
         save_to: pathlib.Path
     ):
         super().__init__(
-            df_app_metadata,
-            dataset_name=DATASET_NAME.MIRAGE22,
+            df_app_metadata=df_app_metadata,
+            dataset_name=dataset_name,
             save_to=save_to
         )
 
-        self.replace_stage(
-            "Rename columns",
-            SequentialPipelineStage(
-                self._rename_columns,
-                name="Rename columns",
-            ),
-        )
-        self.replace_stage(
-            "Add columns", 
-            SequentialPipelineStage(
-                self._add_other_columns,
-                name="Add columns", 
-            ),
-        )
         self.insert(
             1, 
             SequentialPipelineStage(
-                self._drop_columns,
+                self.drop_columns,
                 name="Drop columns",
             ),
         )
 
-    def _rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         df = (
             df
             .rename(_rename_columns(df.columns))
             .rename({
                 "device": "device_id",
                 "pkts_l3_size": "pkts_size",
-                #"label": "android_package_name",
             })
         )
         return df
 
-    def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
             "pkts_is_clear",
             "pkts_heuristic",
             "pkts_annotations",
             "label_source",
-            "sublabel",
             "label_version_code",
             "label_version_name",
             "labeling_type",
@@ -735,7 +652,7 @@ class Mirage22RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
             "pkts_dst_port",
         )
 
-    def _add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_other_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         # add column: convert proto_id to string (6->tcp, 17->udp)
         df = df.with_columns(
             proto=(
@@ -765,46 +682,125 @@ class Mirage22RawPostprocessingPipeline(MirageBaseRawPostprocessingPipeline):
         )
 
 
-class Mirage22CuratePipeline(MirageBaseCuratePipeline):
+class BaseMirageDataset(Dataset):
     def __init__(
         self,
-        save_to: pathlib.Path
+        name: DATASET_NAME,
+        subfolder_raw_json: pathlib.Path,
+        raw_sort_by: Iterable[str] = None,
     ):
-        import tcbench
-        dset_schema = (
-            tcbench.datasets_catalog()
-            [DATASET_NAME.MIRAGE22]
-            .get_schema(DATASET_TYPE.CURATE)
+        super().__init__(name=name)
+        self.df_app_metadata = (
+            pl.read_csv(
+                DATASETS_RESOURCES_FOLDER / f"{self.name}_app_metadata.csv"
+            )
+            .with_columns(
+                pl.col("android_package_name")
+                .str
+                .to_lowercase()
+            )
         )
-        super().__init__(
-            dataset_name=DATASET_NAME.MIRAGE22,
-            save_to=save_to,
-            dset_schema=dset_schema,
-        )
+        self._subfolder_raw_json = self.folder_raw / subfolder_raw_json
+        if raw_sort_by is None:
+            raw_sort_by = [
+                "parent_folder", 
+                "fname", 
+                "fname_row_idx"
+            ]
+        self._raw_sort_by = raw_sort_by
 
-        self.replace_stage(
-            "Adjust packet series",
-            SequentialPipelineStage(
-                self._adjust_packet_series,
-                name="Adjust packet series",
-            ),
-        )
-        self.replace_stage(
-            "Add packet series indices",
-            SequentialPipelineStage(
-                self._add_pkt_indices_columns,
-                name="Add packet series indices"
-            ),
-        )
-        self.replace_stage(
-            "Drop columns",
-            SequentialPipelineStage(
-                self._drop_columns,
-                name="Drop columns",
+    @property
+    def _list_raw_json_files(self):
+        return list(self._subfolder_raw_json.rglob("*.json"))
+
+    def raw(self) -> pl.DataFrame:
+        return (
+            ParserRawJSON(
+                self.name
+            )
+            .run(
+                self._list_raw_json_files,
+                sort_by=self._raw_sort_by,
+                save_to=self.folder_raw,
             )
         )
 
-    def _adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
+    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
+        self.load(DATASET_TYPE.RAW)
+        return (
+            _factory_raw_postprocessing_pipeline(self)
+            .run(self.df)
+        )
+
+    def curate(self, recompute_intermediate: bool = False) -> pl.DataFrame:
+        fname = self.folder_raw / "_postprocess.parquet"
+        if not fname.exists() or recompute_intermediate:
+            self._raw_postprocess()
+
+        with richutils.SpinnerProgress(
+            description=f"Load {self.name}/raw postprocess..."
+        ):
+            df = fileutils.load_parquet(fname, echo=False)
+
+        self.df, self.df_stats, self.df_splits = (
+            _factory_curate_pipeline(self)
+            .run(df)
+        )
+        return df
+
+
+class Mirage19RawPostprocessingPipeline(BaseRawPostprocessingPipeline):
+    def __init__(
+        self,
+        df_app_metadata: pl.DataFrame,
+        save_to: pathlib.Path,
+    ):
+        super().__init__(
+            df_app_metadata,
+            dataset_name=DATASET_NAME.MIRAGE19,
+            save_to=save_to,
+        )
+
+    def rename_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        df = (
+            df
+            .rename(_rename_columns(df.columns))
+            .rename({
+                "parent_folder": "device_id",
+                "pkts_l4_size": "pkts_size",
+            })
+        )
+        return df
+
+
+class Mirage19(BaseMirageDataset):
+    def __init__(self):
+        super().__init__(
+            name=DATASET_NAME.MIRAGE19,
+            subfolder_raw_json=(
+                pathlib.Path("MIRAGE-2019_traffic_dataset_downloadable")
+            ),
+            raw_sort_by=[
+                "parent_folder", 
+                "fname", 
+                "fname_row_idx"
+            ],
+        )
+
+
+class Mirage22CuratePipeline(BaseCuratePipeline):
+    def __init__(
+        self,
+        save_to: pathlib.Path,
+        dataset_name: DATASET_NAME = DATASET_NAME.MIRAGE22
+    ):
+        import tcbench
+        super().__init__(
+            dataset_name=dataset_name, 
+            save_to=save_to,
+        )
+
+    def adjust_packet_series(self, df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
             # enforce direction (0/upload: 1, 1/download: -1)
             pkts_dir=(
@@ -815,7 +811,7 @@ class Mirage22CuratePipeline(MirageBaseCuratePipeline):
         )
         return df
 
-    def _add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def add_pkt_indices_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         df = df.with_columns(
             # series with the index of TCP acks packets
             pkts_ack_idx=(
@@ -858,70 +854,110 @@ class Mirage22CuratePipeline(MirageBaseCuratePipeline):
         )
         return df
 
-    def _drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+    def drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return df.drop(
             "pkts_l4_size",
             "proto_id",
         )
 
 
-class Mirage22(Dataset):
+class Mirage22(BaseMirageDataset):
     def __init__(self):
-        super().__init__(name=DATASET_NAME.MIRAGE22)
-        self.df_app_metadata = pl.read_csv(
-           DATASETS_RESOURCES_FOLDER / f"{self.name}_app_metadata.csv"
-        )
-
-    @property
-    def _list_raw_json_files(self) -> List[pathlib.Path]:
-        return list(
-            (
-                self.folder_raw 
-                / "MIRAGE-COVID-CCMA-2022" 
-                / "Raw_JSON"
-            ).rglob("*.json")
-        )
-
-    def raw(self) -> pl.DataFrame:
-        parser = BaseParserRawJSON(
-            self.name, 
-            self.get_schema(DATASET_TYPE.RAW)
-        )
-        return parser.run(
-            *self._list_raw_json_files,
-            sort_by=(
+        super().__init__(
+            name=DATASET_NAME.MIRAGE22,
+            subfolder_raw_json=pathlib.Path("MIRAGE-COVID-CCMA-2022/Raw_JSON"),
+            raw_sort_by=[
                 "flow_metadata_BF_device",
                 "fname", 
                 "fname_row_idx"
-            ),
-            save_to=self.folder_raw,
+            ],
         )
 
-    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
-        _ = self.load(DATASET_TYPE.RAW)
-        df = self.df
-        return (
-            Mirage22RawPostprocessingPipeline(
-                self.df_app_metadata,
-                save_to=self.folder_raw
-            )
-            .run(df)
+
+class Mirage20RawPostprocessingPipeline(ExtendedRawPostprocessingPipeline):
+    def __init__(
+        self,
+        df_app_metadata: pl.DataFrame,
+        save_to: pathlib.Path
+    ):
+        super().__init__(
+            dataset_name=DATASET_NAME.MIRAGE20,
+            df_app_metadata=df_app_metadata,
+            save_to=save_to,
         )
 
-    def curate(self, recompute_intermediate: bool = True) -> pl.DataFrame:
-        fname = self.folder_raw / "_postprocess.parquet"
-        if recompute_intermediate or not fname.exists():
-            self._raw_postprocess()
-
-        with richutils.SpinnerProgress(
-            description=f"Load {self.name}/raw postprocess..."
-        ):
-            df = fileutils.load_parquet(fname, echo=False)
-
-        self.df, self.df_stats, self.df_splits = (
-            Mirage22CuratePipeline(
-                self.folder_curate
-            )
-            .run(df)
+    def drop_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        return df.drop(
+            "label_source",
+            "label_version_code",
+            "label_version_name",
+            "labeling_type",
+            "pkts_l4_header_size",
+            "pkts_l3_header_size",
+            "pkts_raw_payload",
+            "pkts_src_port",
+            "pkts_dst_port",
         )
-        return self.df
+
+
+class Mirage20(BaseMirageDataset):
+    def __init__(self):
+        super().__init__(
+            name=DATASET_NAME.MIRAGE20,
+            subfolder_raw_json=pathlib.Path("MIRAGE2020_video_public"),
+            raw_sort_by=[
+                "flow_metadata_BF_device",
+                "fname", 
+                "fname_row_idx"
+            ],
+        )
+
+
+class Mirage24(BaseMirageDataset):
+    def __init__(self):
+        super().__init__(
+            name=DATASET_NAME.MIRAGE24,
+            subfolder_raw_json=pathlib.Path("MIRAGE-AppAct-2024"),
+            raw_sort_by=[
+                "fname", 
+                "fname_row_idx"
+            ],
+        )
+
+
+def _factory_raw_postprocessing_pipeline(
+    dataset: BaseMirageDataset
+) -> BaseDatasetProcessingPipeline:
+    kwargs = dict(
+        df_app_metadata=dataset.df_app_metadata, 
+        save_to=dataset.folder_raw
+    )
+    if dataset.name == DATASET_NAME.MIRAGE19:
+        cls = Mirage19RawPostprocessingPipeline
+    elif dataset.name == DATASET_NAME.MIRAGE20:
+        cls = Mirage20RawPostprocessingPipeline
+    elif dataset.name in (
+        DATASET_NAME.MIRAGE22,
+        DATASET_NAME.MIRAGE24
+    ):
+        cls = ExtendedRawPostprocessingPipeline
+        kwargs["dataset_name"] = dataset.name
+    return cls(**kwargs)
+
+
+def _factory_curate_pipeline(
+    dataset: BaseMirageDataset
+) -> BaseDatasetProcessingPipeline:
+    kwargs = dict(
+        dataset_name=dataset.name,
+        save_to=dataset.folder_curate,
+    )
+    if dataset.name == DATASET_NAME.MIRAGE19:
+        cls = BaseCuratePipeline
+    elif dataset.name in (
+        DATASET_NAME.MIRAGE20, 
+        DATASET_NAME.MIRAGE22,
+        DATASET_NAME.MIRAGE24,
+    ):
+        cls = Mirage22CuratePipeline
+    return cls(**kwargs)

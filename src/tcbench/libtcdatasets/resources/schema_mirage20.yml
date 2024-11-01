@@ -47,25 +47,13 @@ raw:
     type: list[list[i64]]
     desc: Actual payload bytes for each packet
     window: flow
-  packet_data_is_clear:
-    type: list[i64]
-    desc: Not documented (but seems some sort of packet series)
-    window: flow
-  packet_data_heuristic:
-    type: list[i64]
-    desc: Not documented (but seems some sort of packet series)
-    window: flow
-  packet_data_annotations:
-    type: list[i64]
-    desc: Not documented (but seems some sort of packet series)
-    window: flow
   flow_metadata_BF_device:
     type: str
     desc: Ethernet address of the device of the experiment
     window: flow
   flow_metadata_BF_label_source:
     type: str
-    desc: Costant value (netstat)
+    desc: Either netstat (99.3%) or strace (0.7%)
     window: flow
   flow_metadata_BF_label:
     type: str
@@ -85,7 +73,7 @@ raw:
     window: flow
   flow_metadata_BF_labeling_type:
     type: str
-    desc: "Either 'exact' (87.5%) or 'most-common' (12.5%)"
+    desc: "Either 'exact' (85.15%) or 'most-common' (14.85%)"
     window: flow
   flow_metadata_BF_num_packets:
     type: u64
@@ -150,10 +138,6 @@ raw:
   flow_metadata_DF_WS:
     type: f64
     desc: Download window size
-    window: flow
-  flow_metadata_BF_activity:
-    type: str
-    desc: Activity in the experiment
     window: flow
   flow_features_packet_length_biflow_min:
     type: u32
@@ -624,11 +608,6 @@ curate:
     desc: category of the application
     window: flow
     lineage: Joined from dataset metadata
-  activity:
-    type: str
-    desc: Activity in the experiment
-    window: flow
-    lineage: Rename flow_metadata_BF_activity
   src_ip:
     type: str
     desc: Source IP
@@ -1358,6 +1337,11 @@ curate:
     desc: Ethernet address of the device of the experiment
     window: flow
     lineage: Rename flow_metadata_BF_device
+  parent_folder:
+    type: str
+    desc: Folder containing the json file
+    window: flow
+    lineage: Added when parsing
   fname:
     type: str
     desc: Filename of the experiment

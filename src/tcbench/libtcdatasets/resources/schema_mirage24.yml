@@ -69,23 +69,23 @@ raw:
     window: flow
   flow_metadata_BF_label:
     type: str
-    desc: Flow label (Android package name)
+    desc: Flow label
     window: flow
   flow_metadata_BF_sublabel:
     type: str
-    desc: Same as flow_metadata_BF_label (except for 2% of flows there the string has a suffix)
+    desc: Android package name (but some strings ends with a ":<suffix>"
     window: flow
   flow_metadata_BF_label_version_code:
     type: 'null'
-    desc: "Null column"
+    desc: Null column
     window: flow
   flow_metadata_BF_label_version_name:
     type: 'null'
-    desc: "Null column"
+    desc: Null column
     window: flow
   flow_metadata_BF_labeling_type:
     type: str
-    desc: "Either 'exact' (87.5%) or 'most-common' (12.5%)"
+    desc: Either 'exact' (69.77%), 'most-common' (30.22%), 'null' (<1%)
     window: flow
   flow_metadata_BF_num_packets:
     type: u64
@@ -567,6 +567,7 @@ raw:
     type: str
     desc: Source IP
     window: flow
+    lineage: Added when parsing
   src_port:
     type: u32
     desc: Source port
@@ -585,11 +586,6 @@ raw:
   proto_id:
     type: u32
     desc: Protocol identifier (6=TCP, 17=UDP)
-    window: flow
-    lineage: Added when parsing
-  parent_folder:
-    type: str
-    desc: Folder containing the json file
     window: flow
     lineage: Added when parsing
   fname:

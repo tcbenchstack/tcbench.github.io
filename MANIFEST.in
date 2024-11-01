@@ -1,5 +1,5 @@
 include requirements.txt
-include src/tcbench/libtcdatasets/resources/*yml
+include src/tcbench/datasets/resources/*yml
 include src/tcbench/cli/rich.theme
 include src/tcbench/FIGSHARE_RESOURCES.yml
 recursive-exclude .*swp

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import polars as pl
 
 import rich.console
@@ -7,27 +9,27 @@ import rich.tree as richtree
 
 from collections import UserDict
 
-from tcbench.libtcdatasets import (
-    dataset_mirage,
-    dataset_ucdavis,
-    dataset_utmobilenet,
+from tcbench.datasets import (
+    _mirage,
+    _ucdavis,
+    _utmobilenet,
 )
-from tcbench.libtcdatasets.core import (
+from tcbench.datasets.core import (
     Dataset, 
-    DatasetSchema
+    DatasetSchema,
+    DatasetMetadata
 )
-
-from tcbench.libtcdatasets.constants import (
+from .constants import (
     DATASET_NAME,
 )
 
 _DATASET_NAME_TO_CLASS = {
-    DATASET_NAME.UCDAVIS19: dataset_ucdavis.UCDavis19,
-    DATASET_NAME.MIRAGE19: dataset_mirage.Mirage19,
-    DATASET_NAME.MIRAGE20: dataset_mirage.Mirage20,
-    DATASET_NAME.MIRAGE22: dataset_mirage.Mirage22,
-    DATASET_NAME.MIRAGE24: dataset_mirage.Mirage24,
-    DATASET_NAME.UTMOBILENET21: dataset_utmobilenet.UTMobilenet21
+    DATASET_NAME.UCDAVIS19: _ucdavis.UCDavis19,
+    DATASET_NAME.MIRAGE19: _mirage.Mirage19,
+    DATASET_NAME.MIRAGE20: _mirage.Mirage20,
+    DATASET_NAME.MIRAGE22: _mirage.Mirage22,
+    DATASET_NAME.MIRAGE24: _mirage.Mirage24,
+    DATASET_NAME.UTMOBILENET21: _utmobilenet.UTMobilenet21
 }
 
 class DatasetsCatalog(UserDict):

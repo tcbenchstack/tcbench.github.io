@@ -31,7 +31,7 @@ def datasets(ctx):
 )
 def info(ctx, dataset_name):
     """Show the meta-data related to supported datasets."""
-    catalog = tcbench.datasets_catalog()
+    catalog = tcbench.get_datasets_catalog()
     if dataset_name is not None:
         cli.logger.log(catalog[dataset_name])
     else:
@@ -78,7 +78,7 @@ def info(ctx, dataset_name):
 #)
 def install(ctx, dataset_name:DATASET_NAME, no_download:bool):
     """Install a dataset."""
-    catalog = tcbench.datasets_catalog()
+    catalog = tcbench.get_datasets_catalog()
     catalog[dataset_name].install(no_download)
 
 

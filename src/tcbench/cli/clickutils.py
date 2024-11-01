@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import rich_click as click
 
 from typing import List, Dict, Any
@@ -6,7 +7,7 @@ from typing import List, Dict, Any
 import functools
 
 from tcbench.core import StringEnum
-from tcbench.libtcdatasets.constants import (
+from tcbench.datasets import (
     DATASET_NAME,
     DATASET_TYPE,
 )
@@ -25,7 +26,6 @@ def _parse_enum_from_str(command: str, parameter:str, value:str, enumeration:Str
 def _parse_str_to_int(command: str, parameter: str, value: str) -> int:
     return int(value)
 
-        
 
 CHOICE_DATASET_NAME = _create_choice(DATASET_NAME)
 parse_dataset_name = functools.partial(_parse_enum_from_str, enumeration=DATASET_NAME)
@@ -36,6 +36,7 @@ parse_dataset_type = functools.partial(_parse_enum_from_str, enumeration=DATASET
 CHOICE_MODELING_METHOD_NAME = _create_choice(MODELING_METHOD_NAME)
 parse_modeling_method_name = functools.partial(_parse_enum_from_str, enumeration=MODELING_METHOD_NAME)
 
+
 def _parse_range(text: str) -> List[Any]:
     parts = list(map(float, text.split(":")))
     if len(parts) == 1:
@@ -43,6 +44,7 @@ def _parse_range(text: str) -> List[Any]:
     
     import numpy as np
     return np.arange(*parts).tolist()
+
 
 def parse_raw_text_to_list(command: str, parameter: str, value: Tuple[str]) -> Tuple[Any]:
     """Parse a coma separated text string into the associated list of values.
@@ -71,8 +73,10 @@ def parse_raw_text_to_list(command: str, parameter: str, value: Tuple[str]) -> T
             l.append(text)
     return tuple(l)
 
+
 def parse_raw_text_to_list_int(command: str, parameter: str, value: Tuple[str]) -> Tuple[int]:
     return tuple(map(int, parse_raw_text_to_list(command, parameter, value)))
+
 
 def parse_remainder(command: str, argument: str, value: Tuple[str]) -> Dict[str, Any]:
     opts = dict()

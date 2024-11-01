@@ -11,19 +11,24 @@ from collections import OrderedDict
 
 from tcbench import fileutils
 from tcbench.cli import richutils
-from tcbench.libtcdatasets.core import (
+from tcbench.datasets.core import (
     Dataset,
     DatasetSchema,
     BaseDatasetProcessingPipeline,
     SequentialPipelineStage,
     _remove_fields_from_schema,
 )
-from tcbench.libtcdatasets.constants import DATASET_NAME, DATASET_TYPE
-from tcbench.libtcdatasets import curation
+from tcbench.datasets import (
+    DATASET_NAME, 
+    DATASET_TYPE,
+    curation,
+    catalog
+)
 
 PARTITION_PRETRAINING = "pretraining"
 PARTITION_SCRIPT = "retraining-script-triggered"
 PARTITION_HUMAN = "retraining-human-triggered"
+
 
 def _parse_raw_txt_worker(
     path: pathlib.Path, 
@@ -54,8 +59,7 @@ def _parse_raw_txt_worker(
 def load_raw_txt(
     path: pathlib.Path, 
 ) -> pl.DataFrame:
-    import tcbench
-    schema = tcbench.get_dataset_polars_schema(
+    schema = catalog.get_dataset_polars_schema(
         DATASET_NAME.UCDAVIS19,
         DATASET_TYPE.RAW
     )
@@ -67,9 +71,7 @@ class RawTXTParser:
         self.save_to = save_to
 
     def run(self, *paths: Pathlib.Path) -> pl.DataFrame:
-        import tcbench
-
-        schema = tcbench.get_dataset_polars_schema(
+        schema = catalog.get_dataset_polars_schema(
             DATASET_NAME.UCDAVIS19,
             DATASET_TYPE.RAW
         )
@@ -258,6 +260,7 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
             .with_row_index("row_id")
         )
 
+
 class CuratePipeline(BaseDatasetProcessingPipeline):
     def __init__(self, save_to: pathlib.Path):
         super().__init__(
@@ -273,8 +276,7 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         return (df, *args)
 
     def run(self, df: pl.DataFrame) -> Dict[str, pl.DataFrame]:
-        import tcbench
-        schema = tcbench.get_dataset_polars_schema(
+        schema = catalog.get_dataset_polars_schema(
             self.dataset_name,
             DATASET_TYPE.CURATE
         )
@@ -406,7 +408,7 @@ class UCDavis19(Dataset):
         ).run(self.df)
         return df
         
-    def curate(self, recompute_intermediate: bool=False) -> pl.DataFrame:
+    def curate(self, recompute_intermediate: bool = False) -> pl.DataFrame:
         fname = self.folder_raw / f"_postprocess.parquet"
         if not fname.exists() or recompute_intermediate:
             df = self._raw_postprocess()
@@ -426,7 +428,7 @@ class UCDavis19(Dataset):
         self.df_script_stats = res["df_script_stats"]
         return self.df
 
-    def load(self, dset_type: DATASET_TYPE, *args, **kwargs) -> Dataset:
+    def load(self, dataset_type: DATASET_TYPE, *args, **kwargs) -> Dataset:
         self.df = None
         self.df_stats = None
         self.df_splits = None
@@ -435,9 +437,9 @@ class UCDavis19(Dataset):
         self.df_script = None
         self.df_script_stats = None
 
-        super().load(dset_type, *args, **kwargs)
+        super().load(dataset_type, *args, **kwargs)
 
-        if dset_type == DATASET_TYPE.CURATE:
+        if dataset_type == DATASET_TYPE.CURATE:
             self.df_human = fileutils.load_if_exists(
                 self.folder_curate / f"{self.name}_human.parquet",
                 echo=False

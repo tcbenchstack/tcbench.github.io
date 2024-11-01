@@ -14,7 +14,7 @@ from tcbench import (
 )
 from tcbench.core import MultiprocessingWorkerKWArgs
 from tcbench.cli import richutils
-from tcbench.libtcdatasets.core import Dataset
+from tcbench.datasets.core import Dataset
 from tcbench.modeling import (
     MODELING_METHOD_NAME, 
     mlmodel_factory,

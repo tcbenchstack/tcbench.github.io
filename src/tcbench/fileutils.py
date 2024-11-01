@@ -12,15 +12,24 @@ import tarfile
 import zipfile
 import os
 import shutil
+import sys
 
 from tcbench import cli
 from tcbench.cli import richutils
+
+
+def _get_module_folder(name: str) -> pathlib.Path:
+    module = sys.modules[name]
+    folder = pathlib.Path(module.__file__).parent
+    return folder
+
 
 def _check_file_exists(path: pathlib.Path) -> pathlib.Path:
     path = pathlib.Path(path)
     if not path.exists():
         raise RuntimeError(f"FileNotFound: {path}")
     return path
+
 
 def create_folder(folder: pathlib.Path, echo: bool = True) -> pathlib.Path:
     folder = pathlib.Path(folder)
@@ -29,12 +38,14 @@ def create_folder(folder: pathlib.Path, echo: bool = True) -> pathlib.Path:
         folder.mkdir(parents=True)
     return folder
 
+
 def load_pickle(path: pathlib.Path, echo: bool = True) -> Any:
     path = _check_file_exists(path)
     cli.logger.log(f"reading: {path}", echo=echo)
     with open(path, "rb") as fin:
         data = pickle.load(fin)
     return data
+
 
 def save_pickle(data: Any, save_as: pathlib.Path, echo: bool = True) -> Any:
     save_as = pathlib.Path(save_as)
@@ -44,10 +55,12 @@ def save_pickle(data: Any, save_as: pathlib.Path, echo: bool = True) -> Any:
         pickle.dump(data, fout)
     return data
 
+
 def load_yaml(path: pathlib.Path, echo: bool = True) -> Dict[Any, Any]:
     cli.logger.log(f"reading: {path}", echo=echo)
     with open(path) as fin:
         return yaml.safe_load(fin)
+
 
 def save_yaml(data: Any, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)
@@ -56,9 +69,11 @@ def save_yaml(data: Any, save_as: pathlib.Path, echo: bool = True) -> None:
     with open(save_as, "w") as fout:
         yaml.dump(data, fout, sort_keys=False)
 
+
 def load_csv(path: pathlib.Path, echo: bool = True) -> pl.DataFrame:
     cli.logger.log(f"loading: {path}", echo=echo)
     return pl.read_csv(path)
+
 
 def save_csv(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)
@@ -66,9 +81,11 @@ def save_csv(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None
     cli.logger.log(f"saving: {save_as}", echo=echo)
     df.write_csv(save_as)
 
+
 def load_parquet(path: pathlib.Path, echo: bool = True) -> pl.DataFrame:
     cli.logger.log(f"loading: {path}", echo=echo)
     return pl.read_parquet(path)
+
 
 def save_parquet(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)

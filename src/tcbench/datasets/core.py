@@ -14,21 +14,19 @@ import dataclasses
 import rich.console
 
 import tcbench
-from tcbench.libtcdatasets import curation
-from tcbench.libtcdatasets.constants import (
+from tcbench import fileutils
+from tcbench.datasets import (
     DATASET_NAME,
     DATASET_TYPE,
-    DATASETS_DEFAULT_INSTALL_ROOT_FOLDER,
-    DATASETS_RESOURCES_METADATA_FNAME,
-    DATASETS_RESOURCES_FOLDER,
+    curation,
+    _constants,
 )
 from tcbench.cli import richutils
-from tcbench import fileutils
 
 
 def get_dataset_folder(dataset_name: str | DATASET_NAME) -> pathlib.Path:
     """Returns the path where a specific datasets in installed"""
-    return DATASETS_DEFAULT_INSTALL_ROOT_FOLDER / str(dataset_name)
+    return _constants.DATASETS_DEFAULT_INSTALL_ROOT_FOLDER / str(dataset_name)
 
 
 def _from_schema_to_yaml(schema:pl.schema.Schema) -> Dict[str, Any]:
@@ -68,15 +66,15 @@ class DatasetMetadata:
         self.folder_dset = tcbench.get_config().install_folder / str(self.name)
         self._schemas = dict()
 
-        fname = DATASETS_RESOURCES_FOLDER / f"schema_{self.name}.yml"
+        fname = _constants.DATASETS_RESOURCES_FOLDER / f"schema_{self.name}.yml"
         if fname.exists():
             data = fileutils.load_yaml(fname, echo=False)
-            for dset_type in DATASET_TYPE.values():
-                if str(dset_type) in data:
-                    self._schemas[dset_type] = DatasetSchema(
+            for dataset_type in DATASET_TYPE.values():
+                if str(dataset_type) in data:
+                    self._schemas[dataset_type] = DatasetSchema(
                         self.name,
-                        DATASET_TYPE.from_str(dset_type),
-                        data[dset_type]
+                        DATASET_TYPE.from_str(dataset_type),
+                        data[dataset_type]
                     )
 
     @property
@@ -195,10 +193,11 @@ class RawDatasetInstaller:
         self.verify_tls = verify_tls
         self.force_reinstall = force_reinstall
         self.download_path = None
-        #self.extra_unpack = [] if extra_unpack is None else extra_unpack
 
         if install_folder is None:
-            self.install_folder = DATASETS_DEFAULT_INSTALL_ROOT_FOLDER
+            self.install_folder = (
+                _constants.DATASETS_DEFAULT_INSTALL_ROOT_FOLDER
+            )
 
         self.install()
 
@@ -330,8 +329,8 @@ class DatasetSchema:
     @classmethod
     def from_dataframe(
         cls, 
-        dset_name: DATASET_NAME, 
-        dset_type: DATASET_TYPE, 
+        dataset_name: DATASET_NAME, 
+        dataset_type: DATASET_TYPE, 
         df: pl.DataFrame
     ) -> DatasetSchema:
         metadata = OrderedDict()
@@ -346,7 +345,7 @@ class DatasetSchema:
             metadata[field_name] = dict(
                 type=field_dtype._string_repr(),
             )
-        return DatasetSchema(dset_name, dset_type, metadata)
+        return DatasetSchema(dataset_name, dataset_type, metadata)
 
     @property
     def fields(self) -> List[str]:
@@ -408,17 +407,23 @@ class DatasetSchema:
 
 class Dataset:
     def __init__(self, name: DATASET_NAME):
-        dset_data = fileutils.load_yaml(DATASETS_RESOURCES_METADATA_FNAME, echo=False).get(str(name), None)
-        if dset_data is None:
+        dataset_data = (
+            fileutils.load_yaml(
+                _constants.DATASETS_RESOURCES_METADATA_FNAME, 
+                echo=False
+            )
+            .get(str(name), None)
+        )
+        if dataset_data is None:
             raise RuntimeError(f"Dataset {name} not recognized")
-        if "raw_data_md5" in dset_data:
+        if "raw_data_md5" in dataset_data:
             raw_data_md5 = dict()
-            for item in dset_data["raw_data_md5"]:
+            for item in dataset_data["raw_data_md5"]:
                 raw_data_md5.update(item)
-            dset_data["raw_data_md5"] = raw_data_md5
-        dset_data["name"] = name
+            dataset_data["raw_data_md5"] = raw_data_md5
+        dataset_data["name"] = name
         self.name = name
-        self.metadata = DatasetMetadata(**dset_data)
+        self.metadata = DatasetMetadata(**dataset_data)
         self.install_folder = tcbench.get_config().install_folder / str(self.name)
         self.y_colname = "app"
         self.index_colname = "row_id"
@@ -497,21 +502,21 @@ class Dataset:
             test_size = 0.1,
         )
 
-    def _load_schema(self, dset_type: DATASET_TYPE) -> DatasetSchema:
-        fname = DATASETS_RESOURCES_FOLDER / f"schema_{self.name}.yml"
+    def _load_schema(self, dataset_type: DATASET_TYPE) -> DatasetSchema:
+        fname = _constants.DATASETS_RESOURCES_FOLDER / f"schema_{self.name}.yml"
         if not fname.exists():
             raise FileNotFoundError(fname)
-        metadata = fileutils.load_yaml(fname, echo=False).get(str(dset_type), None) 
+        metadata = fileutils.load_yaml(fname, echo=False).get(str(dataset_type), None) 
         if metadata is None:
             raise RuntimeError(
-                f"Dataset schema {self.name}.{dset_type} not found"
+                f"Dataset schema {self.name}.{dataset_type} not found"
             )
 
-        return DatasetSchema(self.name, dset_type, metadata)
+        return DatasetSchema(self.name, dataset_type, metadata)
         
     def load(
         self, 
-        dset_type: DATASET_TYPE, 
+        dataset_type: DATASET_TYPE, 
         n_rows: int = None, 
         min_packets:int = None,
         columns: Iterable[str] = None,
@@ -519,10 +524,8 @@ class Dataset:
         echo: bool = True,
     ) -> Dataset:
         folder = self.folder_curate
-        if dset_type == DATASET_TYPE.RAW:
+        if dataset_type == DATASET_TYPE.RAW:
             folder = self.folder_raw
-        #elif dset_type == DATASET_TYPE.PREPROCESS:
-        #    folder = self.folder_preprocess
 
         if min_packets is None or min_packets <= 0:
             min_packets = -1
@@ -535,12 +538,12 @@ class Dataset:
         self.df_stats = None
         self.df_splits = None
         with richutils.SpinnerProgress(
-            description=f"Loading {self.name}/{dset_type}...",
+            description=f"Loading {self.name}/{dataset_type}...",
             visible=echo,
         ):
             fname = folder / f"{self.name}.parquet",
             self.df = pl.scan_parquet(fname, n_rows=n_rows)
-            if dset_type != DATASET_TYPE.RAW:
+            if dataset_type != DATASET_TYPE.RAW:
                 self.df = self.df.filter(
                     pl.col("packets") >= min_packets
                 )
@@ -564,7 +567,7 @@ class Dataset:
                 if self.df_splits is not None:
                     self.df_splits = self.df_splits.collect()
 
-        self.metadata_schema = self._load_schema(dset_type)
+        self.metadata_schema = self._load_schema(dataset_type)
         return self
 
     @abc.abstractmethod

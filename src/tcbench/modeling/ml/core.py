@@ -18,7 +18,7 @@ from tcbench.modeling import (
     datafeatures,
     reporting,
 )
-from tcbench.libtcdatasets.core import (
+from tcbench.datasets.core import (
     Dataset,
 )
 from tcbench.modeling.datafeatures import (

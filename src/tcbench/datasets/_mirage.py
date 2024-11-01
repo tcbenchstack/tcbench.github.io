@@ -20,16 +20,19 @@ import numpy as np
 
 from tcbench import fileutils
 from tcbench.cli import richutils
-from tcbench.libtcdatasets import curation
-from tcbench.libtcdatasets.core import (
+from tcbench.datasets.core import (
     Dataset,
     SequentialPipelineStage,
     DatasetSchema,
     BaseDatasetProcessingPipeline,
 )
-from tcbench.libtcdatasets.constants import (
+from tcbench.datasets import (
     DATASET_NAME,
     DATASET_TYPE,
+    curation,
+    catalog
+)
+from tcbench.datasets._constants import (
     DATASETS_RESOURCES_FOLDER,
     APP_LABEL_BACKGROUND,
     APP_LABEL_ALL,
@@ -128,16 +131,13 @@ def load_raw_json(
     fname: pathlib.Path, 
     dataset_name: DATASET_NAME
 ) -> pl.DataFrame:
-    import tcbench
     fname = pathlib.Path(fname)
     with open(fname) as fin:
         data = json.load(fin)
 
-    dataset_schema = (
-        tcbench
-        .datasets_catalog()
-        [dataset_name]
-        .get_schema(DATASET_TYPE.RAW)
+    dataset_schema = catalog.get_dataset_schema(
+        dataset_name, 
+        DATASET_TYPE.RAW
     )
 
     l = []
@@ -204,9 +204,8 @@ def _rename_columns(columns: List[str]) -> Dict[str, str]:
 
 class ParserRawJSON:
     def __init__(self, name: DATASET_NAME):
-        import tcbench
         self.name = name
-        self.dataset_schema = tcbench.get_dataset_schema(
+        self.dataset_schema = catalog.get_dataset_schema(
             name, 
             DATASET_TYPE.RAW
         )
@@ -417,13 +416,15 @@ class BaseCuratePipeline(BaseDatasetProcessingPipeline):
         dataset_name: DATASET_NAME,
         save_to: pathlib.Path,
     ):
-        import tcbench
         super().__init__(
             description="Curation...",
             dataset_name=dataset_name,
             save_to=save_to,
             dataset_schema=(
-                tcbench.get_dataset_schema(dataset_name, DATASET_TYPE.CURATE)
+                catalog.get_dataset_schema(
+                    dataset_name, 
+                    DATASET_TYPE.CURATE
+                )
             ), 
             progress=True
         )
@@ -794,7 +795,6 @@ class Mirage22CuratePipeline(BaseCuratePipeline):
         save_to: pathlib.Path,
         dataset_name: DATASET_NAME = DATASET_NAME.MIRAGE22
     ):
-        import tcbench
         super().__init__(
             dataset_name=dataset_name, 
             save_to=save_to,

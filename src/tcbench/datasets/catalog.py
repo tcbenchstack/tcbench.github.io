@@ -13,14 +13,13 @@ from tcbench.datasets import (
     _mirage,
     _ucdavis,
     _utmobilenet,
+    DATASET_NAME,
+    DATASET_TYPE,
 )
 from tcbench.datasets.core import (
     Dataset, 
     DatasetSchema,
     DatasetMetadata
-)
-from .constants import (
-    DATASET_NAME,
 )
 
 _DATASET_NAME_TO_CLASS = {
@@ -63,20 +62,20 @@ class DatasetsCatalog(UserDict):
         yield self.__rich__()
 
 
-def datasets_catalog() -> DatasetsCatalog:
+def get_datasets_catalog() -> DatasetsCatalog:
     return DatasetsCatalog()
 
 def get_dataset(name: DATASET_NAME) -> Dataset:
     return DatasetsCatalog()[name]
 
 def get_dataset_schema(
-    dset_name: DATASET_NAME, 
-    dset_type: DATASET_TYPE
+    dataset_name: DATASET_NAME, 
+    dataset_type: DATASET_TYPE
 ) -> DatasetSchema:
-    return get_dataset(dset_name).get_schema(dset_type)
+    return get_dataset(dataset_name).get_schema(dataset_type)
 
 def get_dataset_polars_schema(
-    dset_name: DATASET_NAME, 
-    dset_type: DATASET_TYPE
+    dataset_name: DATASET_NAME, 
+    dataset_type: DATASET_TYPE
 ) -> pl.schema.Schema:
-    return get_dataset_schema(dset_name, dset_type)
+    return get_dataset_schema(dataset_name, dataset_type)

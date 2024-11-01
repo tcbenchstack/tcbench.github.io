@@ -15,7 +15,7 @@ import csv
 
 from tcbench import fileutils
 from tcbench.cli import richutils
-from tcbench.libtcdatasets.core import (
+from tcbench.datasets.core import (
     Dataset,
     DatasetSchema,
     BaseDatasetProcessingPipeline,
@@ -23,8 +23,12 @@ from tcbench.libtcdatasets.core import (
     RawDatasetInstaller,
     _remove_fields_from_schema,
 )
-from tcbench.libtcdatasets.constants import DATASET_NAME, DATASET_TYPE
-from tcbench.libtcdatasets import curation
+from tcbench.datasets import (
+    DATASET_NAME, 
+    DATASET_TYPE,
+    curation,
+    catalog
+)
 
 
 def _fix_raw_csv(path: pathlib.Path) -> Iterable[Dict[str, str]]:
@@ -168,9 +172,8 @@ def _parse_raw_csv_worker(
 
 
 def load_raw_csv(path: pathlib.Path) -> pl.DataFrame:
-    import tcbench
     path = pathlib.Path(path)
-    schema = tcbench.get_dataset_polars_schema(
+    schema = catalog.get_dataset_polars_schema(
         DATASET_NAME.UTMOBILENET21,
         DATASET_TYPE.RAW,
     )
@@ -179,12 +182,10 @@ def load_raw_csv(path: pathlib.Path) -> pl.DataFrame:
 
 class RawCSVParser:
     def __init__(self):
-        import tcbench
         self.name = DATASET_NAME.UTMOBILENET21
-        self.dset_schema = (
-            tcbench.datasets_catalog()
-            [DATASET_NAME.UTMOBILENET21]
-            .get_schema(DATASET_TYPE.RAW)
+        self.dataset_schema = catalog.get_dataset_schema(
+            DATASET_NAME.UTMOBILENET21,
+            DATASET_TYPE.RAW
         )
 
     def _parse_raw_csv(
@@ -195,7 +196,7 @@ class RawCSVParser:
             tmp_folder = pathlib.Path(tmp_folder)
             func = functools.partial(
                 _parse_raw_csv_worker, 
-                schema=self.dset_schema.to_polars(), 
+                schema=self.dataset_schema.to_polars(), 
                 save_to=tmp_folder,
             )
             with (

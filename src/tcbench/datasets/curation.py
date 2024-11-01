@@ -8,7 +8,7 @@ import numpy as np
 
 from typing import Any
 
-from tcbench.libtcdatasets.constants import (
+from tcbench.datasets._constants import (
     APP_LABEL_BACKGROUND,
     APP_LABEL_ALL,
 )

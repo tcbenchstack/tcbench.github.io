@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Dict
 
-from tcbench.modeling import (
-    #MLMODEL_NAME,
+from tcbench.modeling.enums import (
     MODELING_METHOD_NAME
 )
 from tcbench.modeling.ml import (
@@ -16,9 +15,6 @@ MODEL_NAME_TO_CLASS = {
 }
 
 
-def _get_model_class(name: MODELING_METHOD_NAME) -> mlcore.MLModel:
-    return MODEL_NAME_TO_CLASS.get(name, None)
-
 def mlmodel_factory(
     name: MODELING_METHOD_NAME,
     labels: Iterable[str],
@@ -26,7 +22,7 @@ def mlmodel_factory(
     seed: int = 1,
     **hyperparams: Dict[str, Any]
 ) -> mlcore.MLModel:
-    cls = _get_model_class(name)
+    cls = MODEL_NAME_TO_CLASS.get(name, None)
     if cls:
         return cls(
             labels=labels,

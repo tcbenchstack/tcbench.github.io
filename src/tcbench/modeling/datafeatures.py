@@ -12,7 +12,7 @@ from tcbench.modeling.columns import (
     COL_PACKETS,
     COL_ROW_ID,
 )
-from tcbench.modeling import (
+from tcbench.modeling.enums import (
     MODELING_FEATURE
 )
 

@@ -105,7 +105,7 @@ class DatasetMetadata:
         return self._schemas.get(str(dataset_type), None)
 
     def __rich__(self) -> richtable.Table:
-        table = richtable.Table(show_header=False, box=richbox.HORIZONTALS, show_footer=False, pad_edge=False)
+        table = richtable.Table(show_header=False, box=richbox.SIMPLE_HEAD, show_footer=False, pad_edge=False)
         table.add_column("property")
         table.add_column("value", overflow="fold")
 
@@ -158,14 +158,10 @@ class DatasetMetadata:
             table.add_section()
         ###
         table.add_row(":file_folder: Root folder:", str(self.folder_dset))
-        table.add_row(
-            ":question: Raw:", 
-            ":heavy_check_mark:" if self.is_raw else ":cross_mark:"
-        )
-        table.add_row(
-            ":question: Curated:", 
-            ":heavy_check_mark:" if self.is_curated else ":cross_mark:"
-        )
+
+        text = (":heavy_check_mark:" if self.is_raw else ":cross_mark:") + "Raw "
+        text += (":heavy_check_mark:" if self.is_curated else ":cross_mark:") + "Curate"
+        table.add_row(":arrow_down: Installed:", text)
 
         return table
 

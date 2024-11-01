@@ -109,7 +109,11 @@ def rich_splits_report(df:pd.DataFrame, df_split:pd.DataFrame, split_index:int=N
     rich_samples_count_report(df_tmp, title=title, with_total=with_total)
 
 
-def rich_packets_report(df:pd.DataFrame, packets_colname:str="packets", title:str=None) -> rich.table.Table:
+def rich_packets_report(
+    df: pd.DataFrame, 
+    packets_colname: str = "packets", 
+    title: str = None
+) -> rich.table.Table:
     """Compute and reports stats for number of packets per flow"""
     ser = df[packets_colname].describe().round(2)
     rich_samples_count_report(
@@ -123,6 +127,7 @@ def rich_label(text:str, extra_new_line:bool=False) -> None:
         console.print()
     console.print(Panel(text, box=box.ROUNDED, expand=False, padding=0))
 
+
 class SpinnerProgress(richprogress.Progress):
     def __init__(self, description: str = "", visible: bool = True):
         if description:
@@ -135,7 +140,9 @@ class SpinnerProgress(richprogress.Progress):
             super().__init__(
                 richprogress.SpinnerColumn(),
                 richprogress.TimeElapsedColumn(),
-                richprogress.TextColumn("[progress.description]{task.description}"),
+                richprogress.TextColumn(
+                    "[progress.description]{task.description}"
+                ),
                 transient=False,
                 console=console,
             )
@@ -146,7 +153,9 @@ class SpinnerProgress(richprogress.Progress):
             self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            return False
         if self.visible and not PDB_DETECTED:
             description = ""
             if self.description is not None:
@@ -155,6 +164,7 @@ class SpinnerProgress(richprogress.Progress):
             self.columns = self.columns[1:]
             self.update(self.task_id, description=description, refresh=True)
             self.stop()
+        return True
 
     def update(self, *args, **kwargs):
         kwargs["refresh"] = True
@@ -265,9 +275,12 @@ class FileDownloadProgress(richprogress.Progress):
             self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            return False
         if self.visible and not PDB_DETECTED:
             self.stop()
+        return True
 
     def update(self, *args, **kwargs):
         #kwargs["refresh"] = True
@@ -299,13 +312,16 @@ class Progress(richprogress.Progress):
             self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            return False
         if self.visible and not PDB_DETECTED:
             if self.description:
                 self.columns = (self.columns[2], self.columns[5])
                 description = f"{self.description} Done!"
                 super().update(self.task_id, description=description, refresh=True)
             self.stop()
+        return True
 
     def update_description(self, description:str = "") -> None:
         if self.visible and not PDB_DETECTED and self.task_id is not None:

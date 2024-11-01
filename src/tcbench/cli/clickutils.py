@@ -75,7 +75,10 @@ def parse_raw_text_to_list(command: str, parameter: str, value: Tuple[str]) -> T
 
 
 def parse_raw_text_to_list_int(command: str, parameter: str, value: Tuple[str]) -> Tuple[int]:
-    return tuple(map(int, parse_raw_text_to_list(command, parameter, value)))
+    data = parse_raw_text_to_list(command, parameter, value)
+    if data is None:
+        return None
+    return tuple(map(int, data))
 
 
 def parse_remainder(command: str, argument: str, value: Tuple[str]) -> Dict[str, Any]:

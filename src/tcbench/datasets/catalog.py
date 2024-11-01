@@ -6,6 +6,9 @@ import polars as pl
 
 import rich.console
 import rich.tree as richtree
+import rich.table as richtable
+import rich.panel as richpanel
+from rich import box as richbox
 
 from collections import UserDict
 
@@ -50,9 +53,24 @@ class DatasetsCatalog(UserDict):
         tree = richtree.Tree("Datasets")
         for dset_name in sorted(self.keys()):
             dset_metadata = self[dset_name]    
-            node = richtree.Tree(dset_name)
-            node.add(dset_metadata.__rich__())
-            tree.add(node)
+            table = richtable.Table(
+                show_header=False, 
+                box=None,
+                show_footer=False, 
+                pad_edge=False,
+                expand=True,
+            )
+            table.add_column("")
+            table.add_row(f"[bold]{dset_name}[/bold]")
+            table.add_row(
+                richpanel.Panel(
+                    dset_metadata.__rich__(),
+                    box=richbox.ROUNDED,
+                    expand=True,
+                )
+            )
+            table.add_row("")
+            tree.add(table)
         return tree
 
     def __rich_console__(self,

@@ -57,7 +57,7 @@ def modeling(ctx):
     "--method",
     "-m",
     "method_name",
-    required=False,
+    required=True,
     type=clickutils.CHOICE_MODELING_METHOD_NAME,
     callback=clickutils.parse_modeling_method_name,
     help="Modeling method.",
@@ -98,7 +98,7 @@ def modeling(ctx):
     default="",
     type=tuple,
     callback=clickutils.parse_raw_text_to_list_int,
-    help="Number of parallel workers."
+    help="List of splits to use.",
 )
 @click.argument(
     "method_hyperparams",

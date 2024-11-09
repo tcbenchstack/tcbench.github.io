@@ -1,36 +1,34 @@
 from __future__ import annotations
 
-import polars as pl
 import itertools
+import pathlib
 import multiprocessing
-import os
 
-from typing import Iterable
+from typing import Iterable, Any, Dict
 
 from tcbench import (
     DATASET_NAME,
     DATASET_TYPE,
     get_dataset,
 )
-from tcbench.core import MultiprocessingWorkerKWArgs
+from tcbench.datasets import Dataset
 from tcbench.cli import richutils
-from tcbench.datasets.core import Dataset
 from tcbench.modeling import (
     MODELING_METHOD_NAME, 
+    MODELING_FEATURE,
     mlmodel_factory,
 )
 from tcbench.modeling.columns import (
-    COL_SPLIT_INDEX,
     COL_BYTES,
     COL_PACKETS,
     COL_ROW_ID,
+    COL_APP,
 )
 from tcbench.modeling.ml.core import (
     MLDataLoader,
     MLTrainer,
-    ClassificationResults,
-    MultiClassificationResults,
-    compose_hyperparams_grid,
+#    MultiClassificationResults,
+#    compose_hyperparams_grid,
 )
 
 DEFAULT_TRACK_EXTRA_COLUMNS = (
@@ -40,151 +38,137 @@ DEFAULT_TRACK_EXTRA_COLUMNS = (
 )
 
 
-def _train_loop_worker(params: MultiprocessingWorkerKWArgs) -> MultiClassificationResults:
-#    dataset_name: DATASET_NAME,
-#    dataset_type: DATASET_TYPE,
-#    method_name: MODELING_METHOD_NAME,
-#    features: Iterable[str],
-#    series_len: int = 10,
-#    series_pad: int = None,
-#    seed: int = 1,
-#    save_to: pathlib.Path = None,
-#    split_index: int = 1,
-#    track_train: bool = False,
-#    track_extra_columns: Iterable[str] = DEFAULT_TRACK_EXTRA_COLUMNS,
-#) -> MultiClassificationResults:
-    track_extra_columns = params.track_extra_columns
-    if track_extra_columns is None:
-        track_extra_columns = []
 
-    dset = get_dataset(params.dataset_name)
+def _load_dataset(
+    dataset_name: DATASET_NAME,
+    features: Iterable[MODELING_FEATURE],
+    series_len: int = 30,
+    y_colname: str = COL_APP,
+    index_colname: str = COL_ROW_ID,
+    extra_colnames: Iterable[str] = DEFAULT_TRACK_EXTRA_COLUMNS,
+) -> Dataset:
 
-    columns = [dset.y_colname, dset.index_colname]
-    for col in itertools.chain(params.features, track_extra_columns):
+    dset = get_dataset(dataset_name)
+
+    if extra_colnames is None:
+        extra_colnames = []
+    columns = [y_colname, index_colname]
+    for col in itertools.chain(features, extra_colnames):
         col = str(col)
         if col not in columns:
             columns.append(col)
 
     dset.load(
-        params.dataset_type, 
-        min_packets=params.series_len,
+        DATASET_TYPE.CURATE,
+        min_packets=series_len,
         columns=columns,
-        echo=params.echo,
+        echo=False,
     )
+    return dset
 
-    ldr = MLDataLoader(
-        dset,
-        features=params.features,
-        df_splits=dset.df_splits,
-        split_index=params.split_index,
-        series_len=params.series_len,
-        series_pad=params.series_pad,
-        extra_colnames=track_extra_columns,
-        shuffle_train=True,
-        seed=params.seed,
-    )
-
-    mdl = mlmodel_factory(
-        params.method_name,
-        labels=ldr.labels,
-        feature_names=ldr.feature_names,
-        seed=params.seed,
-        **params.method_hyperparams,
-    )
-
-    trainer = MLTrainer(mdl, ldr)
-
-    clsres_train = trainer.fit(name="train")
-    clsres_test = trainer.predict(name="test")
-    if params.save_to:
-        if params.track_train:
-            clsres_train.save(params.save_to, echo=params.echo)
-        clsres_test.save(params.save_to, echo=params.echo)
-        mdl.save(params.save_to, echo=params.echo)
-
-    clsres = MultiClassificationResults(
-        train=clsres_train,
-        test=clsres_test,
-        model=mdl,
-    )
-
-    return clsres
-
+def _train_loop_worker(trainer: MLTrainer):
+    return trainer.fit()
 
 def train_loop(
     dataset_name: DATASET_NAME,
-    dataset_type: DATASET_TYPE,
     method_name: MODELING_METHOD_NAME,
-    features: Iterable[str],
-    series_len: int = 10,
+    features: Iterable[MODELING_FEATURE],
+    series_len: int = 30,
     seed: int = 1,
     save_to: pathlib.Path = None,
     track_train: bool = False,
     num_workers: int = 1,
     split_indices: Iterable[int] = None,
     method_hyperparams: Dict[str, Any] = None,
-) -> Iterable[MultiClassificationResults]:
-    if split_indices is None:
-        dset = get_dataset(dataset_name).load(dataset_type, lazy=True, echo=False)
-        split_indices = (
-            dset
-            .df_splits
-            .select(pl.col(COL_SPLIT_INDEX))
-            .collect()
-            .to_series()
-            .to_list()
-        )
+    y_colname: str = COL_APP,
+    index_colname: str = COL_ROW_ID,
+    extra_colnames: Iterable[str] = DEFAULT_TRACK_EXTRA_COLUMNS,
+    with_progress: bool = True,
+) -> Any:
+
 
     if method_hyperparams is None:
         method_hyperparams = dict()
 
-    hyperparams_grid = compose_hyperparams_grid(method_hyperparams)
+    dset = _load_dataset(
+        dataset_name=dataset_name,
+        features=features,
+        series_len=series_len,
+        y_colname=y_colname,
+        index_colname=index_colname,
+        extra_colnames=extra_colnames
+    )
 
-    for hyperparams_idx, hyperparams_curr in enumerate(hyperparams_grid, start=1):
-        with (
-            richutils.Progress(
-                description="Train...", 
-                total=len(split_indices)
-            ) as progress,
-#            multiprocessing.get_context("spawn").Pool(
-#                #processes=num_workers, 
-#                processes=2,
-#                maxtasksperchild=1
-#            ) as pool,
+    dataloader = MLDataLoader(
+        dset,
+        features=features,
+        df_splits=dset.df_splits,
+        split_indices=split_indices,
+        y_colname=y_colname,
+        index_colname=index_colname,
+        series_len=series_len,
+        series_pad=None,
+        extra_colnames=extra_colnames,
+        shuffle_train=True,
+        seed=1,
+    )
+
+    models = [
+        mlmodel_factory(
+            method_name,
+            labels=dataloader.labels,
+            feature_names=features,
+            seed=split_index,
+            **method_hyperparams,
+        )
+        for split_index in range(dataloader.num_splits)
+    ]
+
+
+    with richutils.Progress(
+        total=dataloader.num_splits,
+        description="Prepare trainers..."
+    ) as progress:
+        trainers = []
+        for model, split_index in zip(
+            models,
+            dataloader.split_indices
         ):
-            params = [
-                MultiprocessingWorkerKWArgs(
-                    dataset_name=dataset_name,
-                    dataset_type=dataset_type,
-                    method_name=method_name,
-                    method_hyperparams=hyperparams_curr,
-                    features=features,
-                    series_len=series_len,
-                    series_pad=None,
-                    seed=split_index,
-                    save_to=(
-                        save_to / f"split_{split_index:02d}" 
-                        if save_to 
-                        else None
-                    ),
-                    split_index=split_index,
-                    track_train=track_train,
-                    track_extra_columns=DEFAULT_TRACK_EXTRA_COLUMNS,
-                    echo=False,
+            trainers.append(
+                MLTrainer(
+                    model,
+                    dataloader,
+                    split_index,
+                    save_to=None,
+                    name="train",
+                    evaluate_train=True,
+                    evaluate_test=True
                 )
-                for split_index in split_indices
-            ]
-#            for clsres in pool.imap_unordered(_train_loop_worker, params):
-            for p in params:
-                _train_loop_worker(p)
-                progress.update()
-#    return _train_loop_worker(
-#        dataset_name=dataset_name,
-#        dataset_type=dataset_type,
-#        method_name=method_name,
-#        features=features,
-#        series_len=series_len,
-#        seed=seed,
-#        save_to=save_to,
-#        track_train=track_train
-#    )
+            )
+            progress.update()
+
+    with (
+        richutils.TrainerLivePerformance(
+            columns=[
+                richutils.TrainerPerformanceTableColumn(
+                    name="split_index"
+                ),
+                richutils.TrainerPerformanceTableColumn(
+                    name="f1_train", fmt=".5f", track="max", summary="avg"
+                ),
+                richutils.TrainerPerformanceTableColumn(
+                    name="f1_test", fmt=".5f", track="max", summary="avg"
+                ),
+            ],
+            total=dataloader.num_splits,
+            description="Train...",
+            visible=with_progress,
+        ) as progress,
+        multiprocessing.Pool(processes=2, maxtasksperchild=1) as pool,
+    ):
+        for clsres_train, clsres_test in pool.imap_unordered(_train_loop_worker, trainers): 
+            progress.add_row(
+                split_index=clsres_test.split_index,
+                f1_train=clsres_train.weighted_f1,
+                f1_test=clsres_test.weighted_f1,
+            )

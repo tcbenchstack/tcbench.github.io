@@ -10,6 +10,8 @@ from tcbench.datasets.catalog import (
     get_dataset_polars_schema,
 )
 
+from tcbench.datasets.core import Dataset
+
 from tcbench.datasets._mirage import (
     Mirage19,
     Mirage20,

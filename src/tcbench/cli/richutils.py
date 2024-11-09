@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 import pandas as pd
-import rich.progress as richprogress
-import rich.columns as richcolumns
-import rich.text as richtext
 
+from typing import List, Iterable
+
+import rich
+import rich.progress as richprogress
+import rich.text as richtext
+import rich.live as richlive
 from rich.table import Table
 from rich.panel import Panel
 from rich import box
-from typing import List
 
 import sys
 
 from tcbench import cli
+from tcbench.cli._richlive import (
+    TrainerPerformanceTableColumn, 
+    TrainerPerformanceTable,
+)
 
 console = cli.console
 
@@ -331,3 +337,60 @@ class Progress(richprogress.Progress):
     def update(self):
         if self.visible and not PDB_DETECTED:
             super().advance(self.task_id, advance=1)
+            
+
+class TrainerLivePerformance(richlive.Live):
+    def __init__(
+        self, 
+        columns: Iterable[TrainerPerformanceTableColumn],
+        show_last_rows: int = None,
+        total: int = None,
+        description: str = None,
+        visible: bool = True,
+    ):
+        self.visible = visible
+        self.grid = Table(
+            box=None,
+            show_header=False, 
+            show_footer=False, 
+            expand=True,
+            pad_edge=False,
+            padding=(0,0,0,0),
+            collapse_padding=True,
+        )
+        self.grid.add_column()
+
+        self.table = TrainerPerformanceTable(columns, show_last_rows)
+        self.progress = None
+
+        self.grid.add_row(self.table)
+        if total is not None:
+            self.progress = Progress(
+                total=total, 
+                description=description
+            )
+            self.grid.add_row(self.progress)
+
+        if self.visible:
+            super().__init__(self.grid, refresh_per_second=2)
+
+    def add_row(self, **kwargs):
+        self.table.add_row(**kwargs)
+        self.progress.update()
+
+    def __enter__(self):
+        if self.visible and not PDB_DETECTED:
+            super().__enter__()
+            if self.progress:
+                self.progress.start()
+            return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        if exc_type is not None:
+            return False
+        if self.visible and not PDB_DETECTED:
+            if self.progress:
+                self.progress.__exit__(exc_type, exc_val, exc_tb)
+            super().__exit__(exc_type, exc_val, exc_tb)
+        return False
+

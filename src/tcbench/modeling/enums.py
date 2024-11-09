@@ -3,6 +3,7 @@ from tcbench.core import StringEnum
 from tcbench.modeling.columns import (
     COL_PKTS_SIZE,
     COL_PKTS_DIR,
+    COL_PKTS_SIZE_TIMES_DIR,
 )
 
 class MODELING_DATASET_TYPE(StringEnum):
@@ -20,6 +21,7 @@ class MODELING_INPUT_REPR_TYPE(StringEnum):
 class MODELING_FEATURE(StringEnum):
     PKTS_SIZE = COL_PKTS_SIZE
     PKTS_DIR = COL_PKTS_DIR
+    PKTS_SIZE_TIMES_DIR = COL_PKTS_SIZE_TIMES_DIR
 
 
 class MODELING_METHOD_NAME(StringEnum):

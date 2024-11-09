@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import polars as pl
+import numpy as np
 
 import pathlib
 import itertools
@@ -10,6 +11,7 @@ from numpy.typing import NDArray
 from sklearn.preprocessing import LabelEncoder
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 
 from tcbench import fileutils
 from tcbench.cli import richutils
@@ -27,7 +29,11 @@ from tcbench.modeling.datafeatures import (
 from tcbench.modeling.columns import (
     COL_APP,
     COL_ROW_ID,
+    COL_SPLIT_INDEX,
 )
+from tcbench.modeling.enums import MODELING_FEATURE
+
+
 
 
 def compose_hyperparams_grid(hyperparams: Dict[str, Any]) -> Tuple[Dict[str, Any]]:
@@ -38,6 +44,7 @@ def compose_hyperparams_grid(hyperparams: Dict[str, Any]) -> Tuple[Dict[str, Any
         else:
             opts.append(zip(itertools.repeat(key, len(value)), value))
     return tuple(dict(pairs) for pairs in itertools.product(*opts))
+
 
 class ClassificationResults:
     def __init__(
@@ -55,6 +62,7 @@ class ClassificationResults:
         self.model = model
         self.name = name
         self.df_feat = df_feat
+        self.split_index = split_index
 
         if y_true is not None:
             self.df_feat = self.df_feat.with_columns(
@@ -62,7 +70,7 @@ class ClassificationResults:
                 y_pred=pl.Series(y_pred),
             )
         self.df_feat = self.df_feat.with_columns(
-            split_index=pl.Series(split_index) if split_index else None
+            split_index=pl.lit(split_index) if split_index else None
         ) 
         self.confusion_matrix = None
         self.confusion_matrix_normalized = None
@@ -78,17 +86,28 @@ class ClassificationResults:
     def y_pred(self) -> NDArray:
         return self.df_feat["y_pred"].to_numpy()
 
-    @property
-    def f1(self) -> NDArray:
+    def _weighted_metric(self, metric: str) -> float:
         if self.classification_report is None:
             return None
         return (
             self.classification_report
             .filter(pl.col("label") == "weighted avg")
-            ["f1-score"]
+            [metric]
             .to_numpy()
             [0]
         )
+
+    @property
+    def weighted_f1(self) -> float:
+        return self._weighted_metric("f1-score")
+
+    @property
+    def weighted_recall(self) -> float:
+        return self._weighted_metric("recall")
+
+    @property
+    def weighted_precision(self) -> float:
+        return self._weighted_metric("precision")
 
     def compute_reports(self) -> None:
         if not (
@@ -205,6 +224,7 @@ class ClassificationResults:
         clsres.classification_report = classification_report
         return clsres
 
+
 @dataclass
 class MultiClassificationResults:
     train: ClassificationResults = None
@@ -259,27 +279,44 @@ class MultiClassificationResults:
         return None
 
 
-class MLDataLoader:
+@dataclass
+class SplitData:
+    X_train: NDArray
+    y_train: NDArray
+    X_test: NDArray
+    y_test: NDArray
+    df_train_feat: pl.DataFrame
+    df_test_feat: pl.DataFrame
+    split_index: int
+    labels: List[str]
+    feature_names: List[str]
+
+
+class MLDataLoaderException(Exception):
+    pass
+
+
+class MLDataLoader(Iterator):
     def __init__(
         self,
         dset: Dataset,
-        features: Iterable[str],
+        features: MODELING_FEATURE | Iterable[MODELING_FEATURE],
         df_splits: pl.DataFrame,
-        split_index: int = 1,
+        split_indices: int | Iterable[int] = None,
         y_colname: str = COL_APP,
         index_colname: str = COL_ROW_ID,
         series_len: int = None,
         series_pad: int = None,
         extra_colnames: Iterable[str] = DEFAULT_EXTRA_COLUMNS,
         shuffle_train: bool = True,
-        seed: int = 1
+        seed: int = 1,
     ):
         self.dset = dset
         self.y_colname = y_colname
         self.index_colname = index_colname
         self._labels = dset.df[y_colname].unique().sort().to_list()
         self.df_splits = df_splits
-        self.split_index = split_index
+        self.split_indices = split_indices
         self.features = features
         self.extra_colnames = extra_colnames
         self.series_len = series_len
@@ -287,72 +324,35 @@ class MLDataLoader:
         self.shuffle_train = shuffle_train
         self.seed = seed
 
-        self._df_train, self._df_test = splitting.get_train_test_splits(
-            self.dset.df,
-            self.df_splits,
-            self.split_index,
-            self.index_colname
-        )
+        self._df_train = None
+        self._df_test = None
+        self._df_train_feat = None
+        self._df_test_feat = None
+        self._X_train = None
+        self._X_test = None
+        self._y_train = None
+        self._y_test = None
+        self._iter_idx = None
 
-        self._X_train, self._y_train, self._df_train_feat = \
-            self.dataprep(
-                self._df_train,
-                shuffle=shuffle_train,
-                seed=seed
-            )
-        self._X_test, self._y_test, self._df_test_feat = \
-            self.dataprep(
-                self._df_test,
-                shuffle=False,
-            )
+        if isinstance(self.features, MODELING_FEATURE):
+            self.features = [self.features]
 
-        self._feature_names = [
-            col
-            for col in self._df_train_feat.columns
-            if col not in (self.y_colname, *self.extra_colnames)
-        ]
+        if self.split_indices is None:
+            self.split_indices = self.df_splits[COL_SPLIT_INDEX].to_numpy()
+        elif isinstance(split_indices, int):
+            self.split_indices = np.array([split_indices])
+        else:
+            self.split_indices = np.array(split_indices)
 
     @property
     def labels(self) -> List[str]:
         return self._labels
 
     @property
-    def feature_names(self) -> List[str]:
-        return self._feature_names
+    def num_splits(self) -> int:
+        return len(self.split_indices)
 
-    @property
-    def train(self) -> pl.DataFrame:
-        return self._df_train
-
-    @property
-    def train_feat(self) -> pl.DataFrame:
-        return self._df_train_feat
-
-    @property
-    def X_train(self) -> NDArray:
-        return self._X_train
-
-    @property
-    def y_train(self) -> NDArray:
-        return self._y_train
-
-    @property
-    def test(self) -> pl.DataFrame:
-        return self._df_test
-
-    @property
-    def X_test(self) -> NDArray:
-        return self._X_test
-
-    @property
-    def y_test(self) -> NDArray:
-        return self._y_test
-        
-    @property
-    def test_feat(self) -> pl.DataFrame:
-        return self._df_test_feat
-
-    def dataprep(
+    def _dataprep(
         self, 
         df: pl.DataFrame, 
         shuffle: bool = False, 
@@ -373,6 +373,124 @@ class MLDataLoader:
                 self.extra_colnames,
             )
 
+    def _verify_labels(self, df: pl.DataFrame, split_index: int) -> None:
+        expected = self._labels
+        found = df[self.y_colname].unique().sort().to_list()
+        if expected == found:
+            return 
+
+        if len(expected) != len(found):
+            raise MLDataLoaderException(
+                f"Split {split_index} expected {len(expected)} labels but found {len(found)}"
+            )
+        msg = ""
+        if len(found) > len(expected):
+            extra_labels = sorted(set(found) - set(expected))
+            msg = f"Split {split_index} has extra labels ({len(extra_labels)}):"
+            msg += ", ".join(extra_labels)
+        else:
+            missing_labels = sorted(set(expected) - set(found))
+            msg = f"Split {split_index} has missing labels ({len(missing_labels)}):"
+            msg += ", ".join(extra_labels)
+        raise MLDataLoaderException(msg)
+
+    def _get_split_data(
+        self, 
+        split_index: int,
+        with_train: bool = True,
+        with_test: bool = True,
+    ) -> SplitData:
+        self._df_train = None
+        self._df_test = None
+        self._X_train = None
+        self._X_test = None
+        self._y_train = None
+        self._y_test = None
+        self._feature_names = None
+
+        self._df_train, self._df_test = splitting.get_train_test_splits(
+            self.dset.df,
+            self.df_splits,
+            split_index,
+            self.index_colname
+        )
+        self._verify_labels(self._df_train, split_index)
+        self._verify_labels(self._df_test, split_index)
+
+        if with_train:
+            self._X_train, self._y_train, self._df_train_feat = \
+                self._dataprep(
+                    self._df_train,
+                    shuffle=self.shuffle_train,
+                    seed=self.seed
+                )
+            self._feature_names = [
+                col
+                for col in self._df_train_feat.columns
+                if col not in (self.y_colname, *self.extra_colnames)
+            ]
+        else:
+            self._df_train = None
+
+        if with_test:
+            self._X_test, self._y_test, self._df_test_feat = \
+                self._dataprep(
+                    self._df_test,
+                    shuffle=False,
+                )
+            self._feature_names = [
+                col
+                for col in self._df_test_feat.columns
+                if col not in (self.y_colname, *self.extra_colnames)
+            ]
+        else:
+            self._df_test = None
+
+        return SplitData(
+            X_train=self._X_train,
+            X_test=self._X_test,
+            y_train=self._y_train,
+            y_test=self._y_test,
+            df_train_feat=self._df_train_feat,
+            df_test_feat=self._df_test_feat,
+            split_index=split_index,
+            labels=self.labels,
+            feature_names=self._feature_names,
+        )
+
+    def __next__(self) -> SplitData:
+        if self._iter_idx is None:
+            self._iter_idx = 0
+        elif self._iter_idx == len(self.df_splits):
+            raise StopIteration()
+        split_index = self.split_indices[self._iter_idx]
+        self._iter_idx += 1
+        return self._get_split_data(split_index)
+
+    def __iter__(self) -> SplitData:
+        self._iter_idx = None
+        return self
+
+    def train_loader(self, split_index: int) -> SplitData:
+        return self._get_split_data(split_index, with_train=True, with_test=False)
+
+    def test_loader(self, split_index: int) -> SplitData:
+        return self._get_split_data(split_index, with_train=False, with_test=True)
+
+    def train_test_loader(self, split_index: int) -> SplitData:
+        return self._get_split_data(split_index, with_train=True, with_test=True)
+
+    def train_loaders(self) -> Iterable[SplitData]:
+        for split_index in self.split_indices:
+            yield self._get_split_data(split_index, with_train=True, with_test=False)
+
+    def test_loaders(self) -> Iterable[SplitData]:
+        for split_index in self.split_indices:
+            yield self._get_split_data(split_index, with_train=False, with_test=True)
+
+    def train_test_loaders(self) -> Iterable[SplitData]:
+        for split_index in self.split_indices:
+            yield self._get_split_data(split_index, with_train=True, with_test=True)
 
 
 class MLModel:
@@ -443,59 +561,110 @@ class MLTester:
         self,
         model: MLModel,
         dataloader: MLDataLoader,
-        split_index: int = None
+        split_index: int,
+        save_to: pathlib.Path = None,
+        name: str = "test"
     ):
         self.model = model
         self.dataloader = dataloader
+        self.save_to = save_to
+        self.name = name
         self.split_index = split_index
 
-    def predict(
+    def on_test_loop_iteration_end(
         self, 
-        name: str = "test", 
-        save_to: pathlib.Path = None, 
-        echo: bool = False,
+        model: MLModel,
+        split_data: SplitData, 
+        y_pred: NDArray,
     ) -> ClassificationResults:
-        y_pred = self.model.predict(
-            self.dataloader.X_test,
-        )
         clsres = ClassificationResults(
-            df_feat=self.dataloader.test_feat,
-            labels=self.model.labels,
-            y_true=self.dataloader.y_test,
+            df_feat=split_data.df_test_feat,
+            labels=split_data.labels,
+            y_true=split_data.y_test,
             y_pred=y_pred,
-            split_index=self.split_index,
-            name=name,
-            model=self.model,
+            split_index=split_data.split_index,
+            name=self.name,
+            model=model,
         )
-        if save_to:
+        if self.save_to:
             clsres.save(
-                save_to, name=name, echo=echo
+                self.save_to, 
+                name=self.name, 
+                echo=False
             )
         return clsres
+
+    def test_loop(self, model: MLModel, split_data: SplitData) -> ClassificationResults:
+        y_pred = model.predict(split_data.X_test)
+        return self.on_test_loop_iteration_end(model, split_data, y_pred)
+
+    def test(self) -> ClassificationResults:
+        split_data = self.dataloader.test_loader(self.split_index)
+        return self.test_loop(self.model, split_data)
+
 
 class MLTrainer(MLTester):
-    def fit(
-        self, 
-        name: str = "train", 
+    def __init__(
+        self,
+        model: MLModel,
+        dataloader: MLDataLoader,
+        split_index: int,
         save_to: pathlib.Path = None,
-        echo: bool = False,
-    ) -> ClassificationResults:
-        y_pred = self.model.fit(
-            self.dataloader.X_train,
-            self.dataloader.y_train
-        )
-        clsres = ClassificationResults(
-            df_feat=self.dataloader.train_feat,
-            labels=self.model.labels,
-            y_true=self.dataloader.y_train,
-            y_pred=y_pred,
-            split_index=self.split_index,
-            model=self.model,
+        name: str = "train",
+        evaluate_train: bool = True,
+        evaluate_test: bool = True,
+    ):
+        super().__init__(
+            model=model,
+            dataloader=dataloader,
+            save_to=save_to,
             name=name,
+            split_index=split_index,
         )
-        if save_to:
+        self.evaluate_train = evaluate_train
+        self.evaluate_test = evaluate_test
+
+    def on_train_loop_iteration_end(
+        self, 
+        model: MLModel,
+        split_data: SplitData, 
+        y_pred: NDArray,
+    ) -> ClassificationResults:
+        clsres = ClassificationResults(
+            df_feat=split_data.df_train_feat,
+            labels=split_data.labels,
+            y_true=split_data.y_train,
+            y_pred=y_pred,
+            split_index=split_data.split_index,
+            name=self.name,
+            model=model,
+        )
+        if self.save_to:
             clsres.save(
-                save_to, name=name, echo=echo
+                self.save_to, 
+                name=self.name, 
+                echo=False
             )
         return clsres
 
+    def train_loop(
+        self, 
+        model: MLModel, 
+        split_data: SplitData
+    ) -> Tuple[ClassificationResults, ClassificationResults]:
+        y_pred = model.fit(
+            split_data.X_train,
+            split_data.y_train
+        )
+
+        clsres_train = None
+        if self.evaluate_train: 
+            clsres_train = self.on_train_loop_iteration_end(model, split_data, y_pred)
+        clsres_test = self.test_loop(model, split_data)
+
+        return clsres_train, clsres_test
+        
+    def fit(self) -> Tuple[ClassificationResults, ClassificationResults]:
+        split_data = self.dataloader.train_test_loader(self.split_index)
+        clsres_train, clsres_test = self.train_loop(self.model, split_data)
+        return clsres_train, clsres_test

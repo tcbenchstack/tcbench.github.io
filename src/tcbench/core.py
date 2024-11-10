@@ -4,11 +4,11 @@ from enum import Enum
 
 class StringEnum(Enum):
     @classmethod
-    def from_str(cls, text):
+    def from_str(cls, text) -> StringEnum:
         for member in cls.__members__.values():
             if member.value == text:
                 return member
-        return None
+        raise ValueError(f"Invalid enumeration {text}")
 
     @classmethod
     def values(cls):

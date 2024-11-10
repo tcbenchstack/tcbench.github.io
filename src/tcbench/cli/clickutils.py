@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import rich_click as click
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Callable, Sequence
 
 import functools
 
@@ -15,26 +15,44 @@ from tcbench.modeling import (
     MODELING_METHOD_NAME, 
     MODELING_INPUT_REPR_TYPE
 )
+from tcbench.modeling.enums import MODELING_FEATURE
 
 
-def _create_choice(enumeration:StringEnum) -> click.Choice:
-    return click.Choice(enumeration.values(), case_sensitive=False)
+def _create_choice(values: List[str]) -> click.Choice:
+    return click.Choice(values, case_sensitive=False)
 
-def _parse_enum_from_str(command: str, parameter:str, value:str, enumeration:StringEnum) -> StringEnum:
-    return enumeration.from_str(value)
+def _parse_enum_from_str(
+    command: str, 
+    parameter:str, 
+    value: str, 
+    from_str: Callable, 
+) -> StringEnum:
+    return from_str(value)
 
 def _parse_str_to_int(command: str, parameter: str, value: str) -> int:
     return int(value)
 
 
-CHOICE_DATASET_NAME = _create_choice(DATASET_NAME)
-parse_dataset_name = functools.partial(_parse_enum_from_str, enumeration=DATASET_NAME)
+CHOICE_DATASET_NAME = _create_choice(DATASET_NAME.values())
+parse_dataset_name = functools.partial(
+    _parse_enum_from_str, from_str=DATASET_NAME.from_str
+)
 
-CHOICE_DATASET_TYPE = _create_choice(DATASET_TYPE)
-parse_dataset_type = functools.partial(_parse_enum_from_str, enumeration=DATASET_TYPE)
+CHOICE_DATASET_TYPE = _create_choice(DATASET_TYPE.values())
+parse_dataset_type = functools.partial(
+    _parse_enum_from_str, from_str=DATASET_TYPE.from_str
+)
 
-CHOICE_MODELING_METHOD_NAME = _create_choice(MODELING_METHOD_NAME)
-parse_modeling_method_name = functools.partial(_parse_enum_from_str, enumeration=MODELING_METHOD_NAME)
+CHOICE_MODELING_METHOD_NAME = _create_choice(MODELING_METHOD_NAME.values())
+parse_modeling_method_name = functools.partial(
+    _parse_enum_from_str, from_str=MODELING_METHOD_NAME.from_str
+)
+
+CHOICE_MODELING_FEATURE = _create_choice(MODELING_FEATURE.values())
+parser_modeling_feature = functools.partial(
+    _parse_enum_from_str, from_str=MODELING_FEATURE.from_str
+)
+
 
 
 def _parse_range(text: str) -> List[Any]:
@@ -97,9 +115,12 @@ def parse_remainder(command: str, argument: str, value: Tuple[str]) -> Dict[str,
 CLICK_PARSE_STRTOINT = _parse_str_to_int
 
 
-def compose_help_string_from_list(items:List[str]) -> str:
+def compose_help_string_from_list(message: str, items: Sequence[str]) -> str:
     """Compose a string from a list"""
-    return "\[" + f'{"|".join(items)}' + "]."
+    message = message.strip()
+    if message[-1] != ".":
+        message += "."
+    return f"""{message}\nValues: [{"|".join(items)}]."""
 
 
 def convert_params_dict_to_list(params:Dict[str,Any], skip_params:List[str]=None) -> List[str]:

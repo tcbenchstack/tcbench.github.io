@@ -1,7 +1,7 @@
 from __future__ import annotations
 import rich_click as click
 
-from typing import Iterable, Dict, Tuple
+from typing import Iterable, Dict, Tuple, Any, List
 import pathlib
 
 from tcbench import (
@@ -19,7 +19,7 @@ from tcbench.cli import clickutils
 #    CLICK_PARSE_STR_TO_LIST_INT,
 #)
 from tcbench.modeling.ml import loops
-from tcbench.modeling.ml.core import MultiClassificationResults
+# from tcbench.modeling.ml.core import MultiClassificationResults
 from tcbench.modeling import (
     MODELING_FEATURE,
     MODELING_METHOD_NAME,
@@ -100,6 +100,33 @@ def modeling(ctx):
     callback=clickutils.parse_raw_text_to_list_int,
     help="List of splits to use.",
 )
+@click.option(
+    "--features",
+    "-f",
+    "features",
+    required=True,
+    type=clickutils.CHOICE_MODELING_FEATURE,
+    callback=clickutils.parse_raw_text_to_list,
+    help="List of features to use.",
+)
+@click.option(
+    "--track-train",
+    "-t",
+    "track_train",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="If enabled, save performance information about train splits.",
+)
+@click.option(
+    "--name",
+    "-n",
+    "run_name",
+    required=False,
+    type=str,
+    default="",
+    help="Name of the run.",
+)
 @click.argument(
     "method_hyperparams",
     nargs=-1,
@@ -116,21 +143,22 @@ def run(
     save_to: pathlib.Path,
     num_workers: int,
     split_indices: Iterable[int],
+    features: List[MODELING_FEATURE],
+    track_train: bool,
+    run_name: str,
     method_hyperparams: Dict[str, Tuple[Any]],
-) -> Iterable[MultiClassificationResults]:
+) -> None:
     """Run an experiment or campaign."""
-    return loops.train_loop(
+    loops.train_loop(
         dataset_name=dataset_name,
-        dataset_type=dataset_type,
         method_name=method_name,
         series_len=series_len,
-        features=(
-            MODELING_FEATURE.PKTS_SIZE, 
-            MODELING_FEATURE.PKTS_DIR,
-        ),
+        features=features,
         save_to=save_to,
         num_workers=num_workers,
         split_indices=split_indices,
         method_hyperparams=method_hyperparams,
+        track_train=track_train,
+        name=run_name,
     )
 

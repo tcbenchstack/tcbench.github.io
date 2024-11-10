@@ -423,9 +423,9 @@ class Dataset:
         self.install_folder = tcbench.get_config().install_folder / str(self.name)
         self.y_colname = "app"
         self.index_colname = "row_id"
-        self.df = None
-        self.df_stats = None
-        self.df_splits = None
+        self.df: pl.DataFrame | None = None
+        self.df_stats: pl.DataFrame | None = None
+        self.df_splits: pl.DataFrame | None = None
         self.metadata_schema = None
 
     @property

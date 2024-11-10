@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Iterable, Dict
+from typing import Iterable, Dict, Any
 
 from tcbench.modeling.enums import (
-    MODELING_METHOD_NAME
+    MODELING_METHOD_NAME,
+    MODELING_FEATURE,
 )
 from tcbench.modeling.ml import (
     classifiers as mlclassifiers,
@@ -18,7 +19,7 @@ MODEL_NAME_TO_CLASS = {
 def mlmodel_factory(
     name: MODELING_METHOD_NAME,
     labels: Iterable[str],
-    feature_names: Iterable[str],
+    feature_names: Iterable[MODELING_FEATURE],
     seed: int = 1,
     **hyperparams: Dict[str, Any]
 ) -> mlcore.MLModel:

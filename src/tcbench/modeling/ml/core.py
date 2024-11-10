@@ -51,12 +51,12 @@ class ClassificationResults:
         self, 
         df_feat: pl.DataFrame,
         labels: NDArray,
-        y_true: NDArray = None,
-        y_pred: NDArray = None,
-        split_index: int = None,
+        y_true: NDArray | None = None,
+        y_pred: NDArray | None = None,
+        split_index: int | None = None,
         name: str = "test",
         with_reports: bool = True,
-        model: MLModel = None,
+        model: MLModel | None = None,
     ):
         self.labels = labels
         self.model = model
@@ -86,7 +86,7 @@ class ClassificationResults:
     def y_pred(self) -> NDArray:
         return self.df_feat["y_pred"].to_numpy()
 
-    def _weighted_metric(self, metric: str) -> float:
+    def _weighted_metric(self, metric: str) -> float | None:
         if self.classification_report is None:
             return None
         return (
@@ -98,15 +98,15 @@ class ClassificationResults:
         )
 
     @property
-    def weighted_f1(self) -> float:
+    def weighted_f1(self) -> float | None:
         return self._weighted_metric("f1-score")
 
     @property
-    def weighted_recall(self) -> float:
+    def weighted_recall(self) -> float | None:
         return self._weighted_metric("recall")
 
     @property
-    def weighted_precision(self) -> float:
+    def weighted_precision(self) -> float | None:
         return self._weighted_metric("precision")
 
     def compute_reports(self) -> None:
@@ -147,12 +147,15 @@ class ClassificationResults:
     def save(
         self, 
         save_to: pathlib.Path, 
-        name: str = "test", 
+        name: str = "",
         with_progress: bool = True, 
         echo: bool = False
-    ) -> ClassificationResults:
+    ) -> None:
         save_to = pathlib.Path(save_to)
         fileutils.create_folder(save_to, echo=echo)
+
+        if name == "":
+            name = self.name
 
         with richutils.SpinnerProgress("Saving...", visible=echo):
             self.df_feat.write_parquet(save_to / f"{name}_df_feat.parquet")
@@ -162,21 +165,23 @@ class ClassificationResults:
                     save_to / f"{name}_confusion_matrix.csv",
                     echo=echo
                 )
+            if self.confusion_matrix_normalized is not None:
                 fileutils.save_csv(
                     self.confusion_matrix_normalized,
                     save_to / f"{name}_confusion_matrix_normalized.csv",
                     echo=echo,
                 )
+            if self.classification_report is not None:
                 fileutils.save_csv(
                     self.classification_report,
                     save_to / f"{name}_classification_report.csv",
                     echo=echo,
                 )
-                fileutils.save_pickle(
-                    self.labels, 
-                    save_to / f"{name}_labels.pkl",
-                    echo=echo
-                )
+            fileutils.save_pickle(
+                self.labels, 
+                save_to / f"{name}_labels.pkl",
+                echo=echo
+            )
 
     @classmethod
     def load(cls, folder: pathlib.Path, name: str = "test", echo: bool = False) -> ClassificationResults:
@@ -225,68 +230,68 @@ class ClassificationResults:
         return clsres
 
 
-@dataclass
-class MultiClassificationResults:
-    train: ClassificationResults = None
-    val: ClassificationResults = None
-    test: ClassificationResults = None
-    model: MLModel = None
-
-    @classmethod
-    def load(
-        cls, 
-        folder: pathlib.Path, 
-        name_train: str = "train",
-        name_test: str = "test",
-        name_val: str = "val",
-        echo: bool = False,
-    ) -> MultiClassificationResults:
-        folder = pathlib.Path(folder)
-
-        clsres = MultiClassificationResults(
-            model = MLModel.load(folder)
-        )
-        if name_train and (folder / f"{name_train}_df_feat.parquet").exists():
-            clsres.train = ClassificationResults.load(
-                folder, name=name_train, echo=echo
-            )
-        if name_test and (folder / f"{name_test}_df_feat.parquet").exists():
-            clsres.test = ClassificationResults.load(
-                folder, name=name_test, echo=echo
-            )
-        if name_val and (folder / f"{name_val}_df_feat.parquet").exists():
-            clsres.val = ClassificationResults.load(
-                folder, name=name_val, echo=echo
-            )
-        return clsres
-
-    @property
-    def f1_train(self) -> float:
-        if self.train is not None:
-            return self.train.f1
-        return None
-
-    @property
-    def f1_test(self) -> float:
-        if self.test is not None:
-            return self.test.f1
-        return None
-
-    @property
-    def f1_val(self) -> float:
-        if self.val is not None:
-            return self.val.f1
-        return None
+# @dataclass
+# class MultiClassificationResults:
+#     train: ClassificationResults = None
+#     val: ClassificationResults = None
+#     test: ClassificationResults = None
+#     model: MLModel = None
+#
+#     @classmethod
+#     def load(
+#         cls, 
+#         folder: pathlib.Path, 
+#         name_train: str = "train",
+#         name_test: str = "test",
+#         name_val: str = "val",
+#         echo: bool = False,
+#     ) -> MultiClassificationResults:
+#         folder = pathlib.Path(folder)
+#
+#         clsres = MultiClassificationResults(
+#             model = MLModel.load(folder)
+#         )
+#         if name_train and (folder / f"{name_train}_df_feat.parquet").exists():
+#             clsres.train = ClassificationResults.load(
+#                 folder, name=name_train, echo=echo
+#             )
+#         if name_test and (folder / f"{name_test}_df_feat.parquet").exists():
+#             clsres.test = ClassificationResults.load(
+#                 folder, name=name_test, echo=echo
+#             )
+#         if name_val and (folder / f"{name_val}_df_feat.parquet").exists():
+#             clsres.val = ClassificationResults.load(
+#                 folder, name=name_val, echo=echo
+#             )
+#         return clsres
+#
+#     @property
+#     def f1_train(self) -> float:
+#         if self.train is not None:
+#             return self.train.f1
+#         return None
+#
+#     @property
+#     def f1_test(self) -> float:
+#         if self.test is not None:
+#             return self.test.f1
+#         return None
+#
+#     @property
+#     def f1_val(self) -> float:
+#         if self.val is not None:
+#             return self.val.f1
+#         return None
 
 
 @dataclass
 class SplitData:
-    X_train: NDArray
-    y_train: NDArray
-    X_test: NDArray
-    y_test: NDArray
-    df_train_feat: pl.DataFrame
-    df_test_feat: pl.DataFrame
+    X_train: NDArray | None
+    y_train: NDArray | None
+    X_test: NDArray | None
+    y_test: NDArray | None
+    df_train_feat: pl.DataFrame | None
+    df_test_feat: pl.DataFrame | None
     split_index: int
     labels: List[str]
     feature_names: List[str]
@@ -302,11 +307,11 @@ class MLDataLoader(Iterator):
         dset: Dataset,
         features: MODELING_FEATURE | Iterable[MODELING_FEATURE],
         df_splits: pl.DataFrame,
-        split_indices: int | Iterable[int] = None,
+        split_indices: List[int] | None = None,
         y_colname: str = COL_APP,
         index_colname: str = COL_ROW_ID,
-        series_len: int = None,
-        series_pad: int = None,
+        series_len: int | None = None,
+        series_pad: int | None = None,
         extra_colnames: Iterable[str] = DEFAULT_EXTRA_COLUMNS,
         shuffle_train: bool = True,
         seed: int = 1,
@@ -316,7 +321,7 @@ class MLDataLoader(Iterator):
         self.index_colname = index_colname
         self._labels = dset.df[y_colname].unique().sort().to_list()
         self.df_splits = df_splits
-        self.split_indices = split_indices
+        self.split_indices = []
         self.features = features
         self.extra_colnames = extra_colnames
         self.series_len = series_len
@@ -337,10 +342,8 @@ class MLDataLoader(Iterator):
         if isinstance(self.features, MODELING_FEATURE):
             self.features = [self.features]
 
-        if self.split_indices is None:
+        if split_indices is None:
             self.split_indices = self.df_splits[COL_SPLIT_INDEX].to_numpy()
-        elif isinstance(split_indices, int):
-            self.split_indices = np.array([split_indices])
         else:
             self.split_indices = np.array(split_indices)
 
@@ -365,13 +368,13 @@ class MLDataLoader(Iterator):
                 seed=seed,
             )
         return datafeatures.features_dataprep(
-                df,
-                self.features,
-                self.series_len,
-                self.series_pad,
-                self.y_colname,
-                self.extra_colnames,
-            )
+            df,
+            self.features,
+            self.series_len,
+            self.series_pad,
+            self.y_colname,
+            self.extra_colnames,
+        )
 
     def _verify_labels(self, df: pl.DataFrame, split_index: int) -> None:
         expected = self._labels
@@ -391,7 +394,7 @@ class MLDataLoader(Iterator):
         else:
             missing_labels = sorted(set(expected) - set(found))
             msg = f"Split {split_index} has missing labels ({len(missing_labels)}):"
-            msg += ", ".join(extra_labels)
+            msg += ", ".join(missing_labels)
         raise MLDataLoaderException(msg)
 
     def _get_split_data(
@@ -497,7 +500,7 @@ class MLModel:
     def __init__(
         self,
         labels: Iterable[str],
-        feature_names: Iterable[str],
+        feature_names: Iterable[MODELING_FEATURE],
         model_class: Callable,
         seed: int = 1,
         **hyperparams: Dict[str, Any],
@@ -562,8 +565,8 @@ class MLTester:
         model: MLModel,
         dataloader: MLDataLoader,
         split_index: int,
-        save_to: pathlib.Path = None,
-        name: str = "test"
+        save_to: pathlib.Path | None = None,
+        name: str = ""
     ):
         self.model = model
         self.dataloader = dataloader
@@ -577,21 +580,22 @@ class MLTester:
         split_data: SplitData, 
         y_pred: NDArray,
     ) -> ClassificationResults:
+        name = self.name
+        if name == "":
+            name = "test"
+        elif name.startswith("test_"):
+            name = f"test_{self.name}"
         clsres = ClassificationResults(
             df_feat=split_data.df_test_feat,
             labels=split_data.labels,
             y_true=split_data.y_test,
             y_pred=y_pred,
             split_index=split_data.split_index,
-            name=self.name,
+            name=name,
             model=model,
         )
         if self.save_to:
-            clsres.save(
-                self.save_to, 
-                name=self.name, 
-                echo=False
-            )
+            clsres.save(self.save_to, name=name, echo=False)
         return clsres
 
     def test_loop(self, model: MLModel, split_data: SplitData) -> ClassificationResults:
@@ -609,8 +613,8 @@ class MLTrainer(MLTester):
         model: MLModel,
         dataloader: MLDataLoader,
         split_index: int,
-        save_to: pathlib.Path = None,
-        name: str = "train",
+        save_to: pathlib.Path | None = None,
+        name: str = "",
         evaluate_train: bool = True,
         evaluate_test: bool = True,
     ):
@@ -630,6 +634,11 @@ class MLTrainer(MLTester):
         split_data: SplitData, 
         y_pred: NDArray,
     ) -> ClassificationResults:
+        name = self.name
+        if name == "":
+            name = "train"
+        elif name.startswith("train_"):
+            name = f"train_{self.name}"
         clsres = ClassificationResults(
             df_feat=split_data.df_train_feat,
             labels=split_data.labels,
@@ -640,18 +649,16 @@ class MLTrainer(MLTester):
             model=model,
         )
         if self.save_to:
-            clsres.save(
-                self.save_to, 
-                name=self.name, 
-                echo=False
-            )
+            clsres.save(self.save_to, name=name, echo=False)
         return clsres
 
     def train_loop(
         self, 
         model: MLModel, 
         split_data: SplitData
-    ) -> Tuple[ClassificationResults, ClassificationResults]:
+    ) -> Tuple[ClassificationResults | None, ClassificationResults]:
+        if split_data.X_train is None or split_data.y_train is None:
+            raise RuntimeError("SplitData has None X_train or y_train")
         y_pred = model.fit(
             split_data.X_train,
             split_data.y_train
@@ -664,7 +671,7 @@ class MLTrainer(MLTester):
 
         return clsres_train, clsres_test
         
-    def fit(self) -> Tuple[ClassificationResults, ClassificationResults]:
+    def fit(self) -> Tuple[ClassificationResults | None, ClassificationResults]:
         split_data = self.dataloader.train_test_loader(self.split_index)
         clsres_train, clsres_test = self.train_loop(self.model, split_data)
         return clsres_train, clsres_test

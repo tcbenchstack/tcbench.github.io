@@ -4,15 +4,14 @@ from typing import List, Iterable, Dict, Any
 
 import xgboost as xgb
 
-from tcbench.modeling.ml.core import (
-    MLModel
-)
+from tcbench.modeling.ml.core import MLModel
+from tcbench.modeling.enums import MODELING_FEATURE
 
 class XGBoostClassifier(MLModel):
     def __init__(
         self,
         labels: Iterable[str],
-        feature_names: Iterable[str],
+        feature_names: Iterable[MODELING_FEATURE],
         seed: int = 1,
         **hyperparams: Dict[str, Any],
     ): 

@@ -384,12 +384,10 @@ class ProgressLiveTable(richlive.Live):
         if self.progress is not None:
             self.progress.update()
 
-    def __enter__(self):
+    def __enter__(self) -> ProgressLiveTable:
         if self.visible and not PDB_DETECTED:
             super().start()
-            #if self.progress:
-            #    self.progress.start()
-            return self
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
         if exc_type is not None:

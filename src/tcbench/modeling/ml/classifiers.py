@@ -11,15 +11,21 @@ class XGBoostClassifier(MLModel):
     def __init__(
         self,
         labels: Iterable[str],
-        feature_names: Iterable[MODELING_FEATURE],
+        features: Iterable[MODELING_FEATURE],
         seed: int = 1,
         **hyperparams: Dict[str, Any],
     ): 
         super().__init__(
             labels=labels,
-            feature_names=feature_names,
+            features=features,
             model_class=xgb.XGBClassifier,
             seed=seed,
             **hyperparams,
         )
-        
+
+    @property
+    def hyperparams_doc(self) -> str:
+        doc = xgb.XGBClassifier.__doc__
+        if doc is None:
+            return super().hyperparams_doc
+        return doc

@@ -294,7 +294,7 @@ class SplitData:
     df_test_feat: pl.DataFrame | None
     split_index: int
     labels: List[str]
-    feature_names: List[str]
+    features: List[str]
 
 
 class MLDataLoaderException(Exception):
@@ -306,7 +306,7 @@ class MLDataLoader(Iterator):
         self,
         dset: Dataset,
         features: MODELING_FEATURE | Iterable[MODELING_FEATURE],
-        df_splits: pl.DataFrame,
+        df_splits: pl.DataFrame | None,
         split_indices: List[int] | None = None,
         y_colname: str = COL_APP,
         index_colname: str = COL_ROW_ID,
@@ -409,7 +409,7 @@ class MLDataLoader(Iterator):
         self._X_test = None
         self._y_train = None
         self._y_test = None
-        self._feature_names = None
+        self._features = None
 
         self._df_train, self._df_test = splitting.get_train_test_splits(
             self.dset.df,
@@ -425,9 +425,9 @@ class MLDataLoader(Iterator):
                 self._dataprep(
                     self._df_train,
                     shuffle=self.shuffle_train,
-                    seed=self.seed
+                    seed=self.seed + split_index
                 )
-            self._feature_names = [
+            self._features = [
                 col
                 for col in self._df_train_feat.columns
                 if col not in (self.y_colname, *self.extra_colnames)
@@ -441,7 +441,7 @@ class MLDataLoader(Iterator):
                     self._df_test,
                     shuffle=False,
                 )
-            self._feature_names = [
+            self._features = [
                 col
                 for col in self._df_test_feat.columns
                 if col not in (self.y_colname, *self.extra_colnames)
@@ -458,7 +458,7 @@ class MLDataLoader(Iterator):
             df_test_feat=self._df_test_feat,
             split_index=split_index,
             labels=self.labels,
-            feature_names=self._feature_names,
+            features=self._features,
         )
 
     def __next__(self) -> SplitData:
@@ -500,13 +500,13 @@ class MLModel:
     def __init__(
         self,
         labels: Iterable[str],
-        feature_names: Iterable[MODELING_FEATURE],
+        features: Iterable[MODELING_FEATURE],
         model_class: Callable,
         seed: int = 1,
         **hyperparams: Dict[str, Any],
     ):
         self.labels = labels
-        self.feature_names = feature_names
+        self.features = features
         self.hyperparams = hyperparams
         self.seed = seed
 
@@ -515,7 +515,11 @@ class MLModel:
 
     @property
     def name(self) -> str:
-        self._model.__class__.__name__
+        return self._model.__class__.__name__
+
+    @property
+    def hyperparams_doc(self) -> str:
+        return "No documentation available."
 
     def _fit_label_encoder(self, labels) -> LabelEncoder:
         label_encoder = LabelEncoder()
@@ -536,7 +540,7 @@ class MLModel:
         self._model.fit(X, self.encode_y(y))
         return self.decode_y(self._model.predict(X))
 
-    def predict(self, X) -> ClassificationResults:
+    def predict(self, X) -> NDArray:
         return self.decode_y(self._model.predict(X))
 
     @classmethod
@@ -547,16 +551,22 @@ class MLModel:
         return fileutils.load_pickle(path, echo=echo)
 
     def save(self, save_to: pathlib.Path, echo: bool = False) -> MLModel:
-        if save_to:
-            save_to = pathlib.Path(save_to)
-            fileutils.save_pickle(
-                self, save_to / "tcbench_model.pkl", echo=echo
-            )
+        save_to = pathlib.Path(save_to)
+        if not save_to.exists():
+            save_to.mkdir(parents=True)
+        fileutils.save_pickle(
+            self, save_to / "tcbench_mlmodel.pkl", echo=echo
+        )
+        fileutils.save_yaml(
+            self.hyperparams, 
+            save_to / "hyperparams.yml",
+            echo=echo
+        )
         return self
 
     @property
     def size(self) -> int:
-        return None
+        return -1
 
 
 class MLTester:
@@ -675,3 +685,7 @@ class MLTrainer(MLTester):
         split_data = self.dataloader.train_test_loader(self.split_index)
         clsres_train, clsres_test = self.train_loop(self.model, split_data)
         return clsres_train, clsres_test
+
+    def save(self, echo: bool = False) -> None:
+        if self.save_to is not None:
+            self.model.save(self.save_to, echo)

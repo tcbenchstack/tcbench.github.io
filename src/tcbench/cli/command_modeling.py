@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import rich_click as click
 
 from typing import Iterable, Dict, Tuple, Any, List
@@ -9,20 +10,11 @@ from tcbench import (
     DATASET_TYPE,
 )
 from tcbench.cli import clickutils
-#from tcbench.cli.clickutils import (
-#    CLICK_CHOICE_DATASET_NAME,
-#    CLICK_CHOICE_DATASET_TYPE,
-#    CLICK_CHOICE_MODELING_METHOD_NAME,
-#    CLICK_PARSE_DATASET_NAME,
-#    CLICK_PARSE_DATASET_TYPE,
-#    CLICK_PARSE_MODELING_METHOD_NAME,
-#    CLICK_PARSE_STR_TO_LIST_INT,
-#)
 from tcbench.modeling.ml import loops
-# from tcbench.modeling.ml.core import MultiClassificationResults
 from tcbench.modeling import (
     MODELING_FEATURE,
     MODELING_METHOD_NAME,
+    factory,
 )
 
 @click.group()
@@ -127,8 +119,19 @@ def modeling(ctx):
     default="",
     help="Name of the run.",
 )
+@click.option(
+    "--seed",
+    "-s",
+    "seed",
+    required=False,
+    type=int,
+    default=1,
+    help=\
+        "Seed for dataprep and model initialization. "
+        "The value specified is summmed to the split index."
+)
 @click.argument(
-    "method_hyperparams",
+    "hyperparams_grid",
     nargs=-1,
     type=click.UNPROCESSED,
     callback=clickutils.parse_remainder,
@@ -142,13 +145,15 @@ def run(
     series_len: int,
     save_to: pathlib.Path,
     num_workers: int,
-    split_indices: Iterable[int],
+    split_indices: List[int],
     features: List[MODELING_FEATURE],
     track_train: bool,
     run_name: str,
-    method_hyperparams: Dict[str, Tuple[Any]],
+    seed: int,
+    hyperparams_grid: Dict[str, Tuple[Any]],
 ) -> None:
     """Run an experiment or campaign."""
+
     loops.train_loop(
         dataset_name=dataset_name,
         method_name=method_name,
@@ -157,8 +162,46 @@ def run(
         save_to=save_to,
         num_workers=num_workers,
         split_indices=split_indices,
-        method_hyperparams=method_hyperparams,
+        hyperparams_grid=hyperparams_grid,
         track_train=track_train,
         name=run_name,
+        seed=seed,
     )
+
+
+@modeling.command(name="hyperparams-docs")
+@click.option(
+    "--method",
+    "-m",
+    "method_name",
+    required=True,
+    type=clickutils.CHOICE_MODELING_METHOD_NAME,
+    callback=clickutils.parse_modeling_method_name,
+    help="Modeling method.",
+    default=None,
+)
+def hyperparam_docs(
+    method_name: MODELING_METHOD_NAME,
+):
+    """Shows hyper parameters documentations for modelingn algorithms."""
+    from tcbench.cli.richutils import console
+    from rich.pretty import pprint
+
+    mdl = factory.mlmodel_factory(
+        name=method_name,
+        labels=["a"],
+        features=[MODELING_FEATURE.PKTS_SIZE],
+        seed=1,
+    )
+
+    console.print("Class object representation")
+    pprint(mdl._model)
+
+    console.print()
+    console.print("Class docstring")
+    console.print(mdl.hyperparams_doc)
+
+
+
+        
 

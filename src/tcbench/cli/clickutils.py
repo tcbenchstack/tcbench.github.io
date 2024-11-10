@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import rich_click as click
 
-from typing import List, Dict, Any, Callable, Sequence
+from typing import List, Dict, Any, Callable, Sequence, Tuple
 
 import functools
 
@@ -64,7 +64,11 @@ def _parse_range(text: str) -> List[Any]:
     return np.arange(*parts).tolist()
 
 
-def parse_raw_text_to_list(command: str, parameter: str, value: Tuple[str]) -> Tuple[Any]:
+def parse_raw_text_to_list(
+    command: str | None, 
+    parameter: str | None, 
+    value: Tuple[str]
+) -> Tuple[Any] | None:
     """Parse a coma separated text string into the associated list of values.
        The list can be a combination of string, numeric or range values
        in the format first:last or first:last:step. In the latter two cases,
@@ -75,39 +79,46 @@ def parse_raw_text_to_list(command: str, parameter: str, value: Tuple[str]) -> T
         "0:3,a"     -> (0.0, 1.0, 2.0, "a")
         "0:2:0.5,a" -> (0.0, 0.5, 1.0, 1.5, "a")
     """
-    value = "".join(value)
-    if value == "" or value is None:
+    text = "".join(value)
+    if text == "" or text is None:
         return None
-    l = []
-    for text in value.split(","):
-        if text.isnumeric():
+    values = []
+    for token in text.split(","):
+        if token.isnumeric():
             func = float
-            if '.' not in text:
+            if '.' not in token:
                 func = int
-            l.append(func(text))
-        elif ":" in text:
-            l.extend(_parse_range(text))
+            values.append(func(token))
+        elif ":" in token:
+            values.extend(_parse_range(token))
         else:
-            l.append(text)
-    return tuple(l)
+            values.append(token)
+    return tuple(values)
 
 
-def parse_raw_text_to_list_int(command: str, parameter: str, value: Tuple[str]) -> Tuple[int]:
+def parse_raw_text_to_list_int(
+    command: str, 
+    parameter: str, 
+    value: Tuple[str]
+) -> Tuple[int] | None:
     data = parse_raw_text_to_list(command, parameter, value)
     if data is None:
         return None
     return tuple(map(int, data))
 
 
-def parse_remainder(command: str, argument: str, value: Tuple[str]) -> Dict[str, Any]:
-    opts = dict()
-    for text in value:
-        key, val = text.split("=")
-        opts[key] = parse_raw_text_to_list(None, None, val)
-    return opts
-
-#CLICK_CHOICE_METHOD_NAME = _create_choice(MODELING_METHOD_TYPE)
-#CLICK_PARSE_METHOD_NAME = functools.partial(_parse_enum_from_str, enumeration=MODELING_METHOD_TYPE)
+def parse_remainder(
+    command: str, 
+    argument: str, 
+    values: Tuple[str]
+) -> Dict[str, Tuple[Any]]:
+    params = dict()
+    for text in values:
+        if text == "--":
+            continue
+        param_name, param_value = text.split("=")
+        params[param_name] = parse_raw_text_to_list(None, None, (param_value,))
+    return params
 
 #CLICK_CHOICE_INPUT_REPR = _create_choice(MODELING_INPUT_REPR_TYPE)
 #CLICK_PARSE_INPUT_REPR = functools.partial(_parse_enum_from_str, enumeration=MODELING_INPUT_REPR_TYPE)

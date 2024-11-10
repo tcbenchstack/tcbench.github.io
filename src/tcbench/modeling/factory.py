@@ -19,7 +19,7 @@ MODEL_NAME_TO_CLASS = {
 def mlmodel_factory(
     name: MODELING_METHOD_NAME,
     labels: Iterable[str],
-    feature_names: Iterable[MODELING_FEATURE],
+    features: Iterable[MODELING_FEATURE],
     seed: int = 1,
     **hyperparams: Dict[str, Any]
 ) -> mlcore.MLModel:
@@ -27,7 +27,7 @@ def mlmodel_factory(
     if cls:
         return cls(
             labels=labels,
-            feature_names=feature_names,
+            features=features,
             seed=seed,
             **hyperparams
         )

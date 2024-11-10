@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rich import box
 from rich.table import Table, Column
-from typing import Iterable, Any
+from typing import Any, List
 
 
 SYMBOL_HIGHLIGHT_ROW = ":left_arrow:"
@@ -11,7 +11,7 @@ SYMBOL_ARROW_UP = "↑"
 SYMBOL_ARROW_DOWN = "↓"
 
 
-class TrainerPerformanceTableColumnSummary:
+class LiveTableColumnSummary:
     def __init__(self, name: str, fmt: str):
         self.name = name
         self.fmt = fmt
@@ -25,10 +25,11 @@ class TrainerPerformanceTableColumnSummary:
         return text + format(self._state, self.fmt)
 
     def update(self, value: Any) -> str:
+        self._state = value
         return self.format()
 
 
-class TrainerPerformanceTableColumnSummaryMin(TrainerPerformanceTableColumnSummary):
+class LiveTableColumnSummaryMin(LiveTableColumnSummary):
     def __init__(self, fmt: str):
         super().__init__(name="min", fmt=fmt)
 
@@ -41,7 +42,7 @@ class TrainerPerformanceTableColumnSummaryMin(TrainerPerformanceTableColumnSumma
         return self.format()
 
 
-class TrainerPerformanceTableColumnSummaryMax(TrainerPerformanceTableColumnSummary):
+class LiveTableColumnSummaryMax(LiveTableColumnSummary):
     def __init__(self, fmt: str):
         super().__init__(name="max", fmt=fmt)
 
@@ -51,10 +52,10 @@ class TrainerPerformanceTableColumnSummaryMax(TrainerPerformanceTableColumnSumma
             or self._state < value
         ):
             self._state = value
-        return self.format(self._state)
+        return self.format()
 
 
-class TrainerPerformanceTableColumnSummaryAvg(TrainerPerformanceTableColumnSummary):
+class LiveTableColumnSummaryAvg(LiveTableColumnSummary):
     def __init__(self, fmt: str):
         super().__init__(name="avg", fmt=fmt)
         self._state = 0
@@ -69,20 +70,20 @@ class TrainerPerformanceTableColumnSummaryAvg(TrainerPerformanceTableColumnSumma
 
 
 COLUMN_SUMMARY = {
-    "min": TrainerPerformanceTableColumnSummaryMin,
-    "max": TrainerPerformanceTableColumnSummaryMax,
-    "avg": TrainerPerformanceTableColumnSummaryAvg,
+    "min": LiveTableColumnSummaryMin,
+    "max": LiveTableColumnSummaryMax,
+    "avg": LiveTableColumnSummaryAvg,
 }
 
 
-class TrainerPerformanceTableColumn(Column):
+class LiveTableColumn(Column):
     def __init__(
         self, 
         name: str,
-        fmt: str = None,
+        fmt: str | None = None,
         justify: str = "right",
-        track: str = None,      # min, max
-        summary: str = None,    # min, max, avg
+        track: str | None = None,      # min, max
+        summary: str | None = None,    # min, max, avg
         **kwargs
     ):
         self.name = name
@@ -114,7 +115,7 @@ class TrainerPerformanceTableColumn(Column):
             return format(value, self.fmt) 
         return str(value)
 
-    def _reformat_cell(self, cell_idx: int) -> None:
+    def _reformat_cell(self, cell_idx: int | None) -> None:
         if cell_idx is not None:
             self._cells[cell_idx] = self.format(self.values[cell_idx])
 
@@ -158,11 +159,11 @@ class TrainerPerformanceTableColumn(Column):
         return self._column_summary is not None
 
 
-class TrainerPerformanceTable(Table):
+class LiveTable(Table):
     def __init__(
         self, 
-        columns: Iterable[TrainerPerformanceTableColumn],
-        show_last_rows: int = None,
+        columns: List[LiveTableColumn],
+        show_last_rows: int | None = None,
     ):
         self.show_last_rows = show_last_rows
         self._perf_columns = None
@@ -170,6 +171,7 @@ class TrainerPerformanceTable(Table):
         super().__init__(
             box=box.SIMPLE_HEAVY, 
             show_footer=any(col.has_summary for col in columns),
+            show_edge=False,
             pad_edge=False,
             padding=(0, 1, 0, 0),
         )
@@ -178,63 +180,12 @@ class TrainerPerformanceTable(Table):
             col._index = idx
             self.columns.append(col)
 
-    def add_row(self, **kwargs):
+    def add_row(self, *args, **kwargs) -> None:
         renderables = []
-        for idx, col in enumerate(self.columns):
+        for col in self.columns:
             raw_col_value = kwargs.get(col.name, "")
             text = ""
             if raw_col_value != "":
                 text = col.append(raw_col_value)
             renderables.append(text)
         super().add_row(*renderables)
-
-
-#class TrainerLivePerformance(Live):
-#    def __init__(
-#        self, 
-#        columns: Iterable[TrainerLivePerformanceColumn],
-#        show_last_rows: int = None,
-#        total: int = None,
-#        description: str = None,
-#    ):
-#        self.grid = Table(
-#            box=None,
-#            show_header=False, 
-#            show_footer=False, 
-#            expand=True,
-#            pad_edge=False,
-#            padding=(0,0,0,0),
-#            collapse_padding=True,
-#        )
-#        self.grid.add_column()
-#
-#        self.table = TrainerTablePerformance(columns, show_last_rows)
-#        self.progress = None
-#
-#        self.grid.add_row(self.table)
-#        if total is not None:
-#            self.progress = richutils.Progress(
-#                total=total, 
-#                description=description
-#            )
-#            self.grid.add_row(self.progress)
-#
-#        super().__init__(self.grid, refresh_per_second=2)
-#
-#    def __enter__(self):
-#        super().__enter__()
-#        if self.progress:
-#            self.progress.start()
-#        return self
-#
-#    def __exit__(self, *args, **kwargs):
-#        if self.progress:
-#            self.progress.__exit__(*args, **kwargs)
-#        super().__exit__(*args, **kwargs)
-#
-#    def add_row(self, **kwargs):
-#        self.table.add_row(**kwargs)
-#        self.progress.update()
-
-
-

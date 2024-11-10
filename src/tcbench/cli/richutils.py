@@ -16,8 +16,8 @@ import sys
 
 from tcbench import cli
 from tcbench.cli._richlive import (
-    TrainerPerformanceTableColumn, 
-    TrainerPerformanceTable,
+    LiveTableColumn, 
+    LiveTable,
 )
 
 console = cli.console
@@ -191,7 +191,7 @@ class SpinnerAndCounterProgress(richprogress.Progress):
         self, 
         total:int, 
         description: str = "", 
-        steps_description: List[str] = None, 
+        steps_description: List[str] | None = None, 
         visible: bool = True, 
         newline_after_update: bool = False
     ):
@@ -339,13 +339,13 @@ class Progress(richprogress.Progress):
             super().advance(self.task_id, advance=1)
             
 
-class TrainerLivePerformance(richlive.Live):
+class ProgressLiveTable(richlive.Live):
     def __init__(
         self, 
-        columns: Iterable[TrainerPerformanceTableColumn],
-        show_last_rows: int = None,
-        total: int = None,
-        description: str = None,
+        columns: List[LiveTableColumn],
+        total: int,
+        show_last_rows: int | None = None,
+        description: str = "",
         visible: bool = True,
     ):
         self.visible = visible
@@ -353,6 +353,7 @@ class TrainerLivePerformance(richlive.Live):
             box=None,
             show_header=False, 
             show_footer=False, 
+            show_edge=False,
             expand=True,
             pad_edge=False,
             padding=(0,0,0,0),
@@ -360,7 +361,7 @@ class TrainerLivePerformance(richlive.Live):
         )
         self.grid.add_column()
 
-        self.table = TrainerPerformanceTable(columns, show_last_rows)
+        self.table = LiveTable(columns, show_last_rows)
         self.progress = None
 
         self.grid.add_row(self.table)
@@ -372,17 +373,22 @@ class TrainerLivePerformance(richlive.Live):
             self.grid.add_row(self.progress)
 
         if self.visible:
-            super().__init__(self.grid, refresh_per_second=2)
+            super().__init__(
+                self.grid, 
+                refresh_per_second=2, 
+                console=console
+            )
 
     def add_row(self, **kwargs):
         self.table.add_row(**kwargs)
-        self.progress.update()
+        if self.progress is not None:
+            self.progress.update()
 
     def __enter__(self):
         if self.visible and not PDB_DETECTED:
-            super().__enter__()
-            if self.progress:
-                self.progress.start()
+            super().start()
+            #if self.progress:
+            #    self.progress.start()
             return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:

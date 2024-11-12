@@ -20,6 +20,7 @@ keywords = ["machine learning", "deep learning", "traffic classification", "time
 dependencies = [
     "autorank",
     "click",
+    "click_plugins",
     "gdown",
     "numpy",
     "pandas",

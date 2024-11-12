@@ -24,9 +24,11 @@ def _create_choice(values: List[str]) -> click.Choice:
 def _parse_enum_from_str(
     command: str, 
     parameter:str, 
-    value: str, 
+    value: str | None, 
     from_str: Callable, 
-) -> StringEnum:
+) -> StringEnum | None:
+    if value == "" or value is None:
+        return None
     return from_str(value)
 
 def _parse_str_to_int(command: str, parameter: str, value: str) -> int:

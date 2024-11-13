@@ -6,6 +6,7 @@ import multiprocessing
 
 from typing import Iterable, Any, Dict, Tuple, List
 
+from tcbench.core import Pool1N
 from tcbench import (
     DATASET_NAME,
     DATASET_TYPE,
@@ -162,7 +163,7 @@ def _train_loop_single(
             description="Train...",
             visible=with_progress,
         ) as progress,
-        multiprocessing.Pool(
+        Pool1N(
             processes=num_workers, 
             maxtasksperchild=1
         ) as pool,

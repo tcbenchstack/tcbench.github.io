@@ -31,7 +31,7 @@ class Pool1N:
         self.processes = processes
         self._pool = None
         if processes > 1:
-            self._pool = multiprocessing.Pool(
+            self._pool = multiprocessing.get_context("spawn").Pool(
                 processes=processes,
                 maxtasksperchild=maxtasksperchild,
             )

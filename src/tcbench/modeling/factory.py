@@ -21,6 +21,7 @@ def mlmodel_factory(
     labels: Iterable[str],
     features: Iterable[MODELING_FEATURE],
     seed: int = 1,
+    num_workers: int = 1,
     **hyperparams: Dict[str, Any]
 ) -> mlcore.MLModel:
     cls = MODEL_NAME_TO_CLASS.get(name, None)

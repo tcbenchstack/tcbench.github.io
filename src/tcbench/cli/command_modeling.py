@@ -169,7 +169,7 @@ def run(
     )
 
 
-@modeling.command(name="hyperparams-docs")
+@modeling.command(name="docs")
 @click.option(
     "--method",
     "-m",

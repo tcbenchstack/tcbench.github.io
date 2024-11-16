@@ -13,8 +13,12 @@ class XGBoostClassifier(MLModel):
         labels: Iterable[str],
         features: Iterable[MODELING_FEATURE],
         seed: int = 1,
+        num_workers: int | None = None,
         **hyperparams: Dict[str, Any],
     ): 
+        if num_workers is not None and "n_jobs" not in hyperparams:
+            hyperparams["n_jobs"] = num_workers
+
         super().__init__(
             labels=labels,
             features=features,

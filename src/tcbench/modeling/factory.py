@@ -30,6 +30,7 @@ def mlmodel_factory(
             labels=labels,
             features=features,
             seed=seed,
+            num_workers=num_workers,
             **hyperparams
         )
     raise RuntimeError(f"ModelNotFound: unrecognized model name {name}")

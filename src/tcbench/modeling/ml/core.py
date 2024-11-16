@@ -319,33 +319,73 @@ class MLDataLoader(Iterator):
         self.dset = dset
         self.y_colname = y_colname
         self.index_colname = index_colname
-        self._labels = dset.df[y_colname].unique().sort().to_list()
         self.df_splits = df_splits
-        self.split_indices = []
-        self.features = features
+        self.features = [features] if isinstance(features, MODELING_FEATURE) else features
         self.extra_colnames = extra_colnames
         self.series_len = series_len
         self.series_pad = series_pad
         self.shuffle_train = shuffle_train
         self.seed = seed
 
-        self._df_train = None
-        self._df_test = None
-        self._df_train_feat = None
-        self._df_test_feat = None
-        self._X_train = None
-        self._X_test = None
-        self._y_train = None
-        self._y_test = None
-        self._iter_idx = None
+        if not dset.is_loaded:
+            raise RuntimeError(
+                f"Dataset {dset.name} is not loaded!"
+                " Call the Dataset .load() method before creating a DataLoader()"
+            )
 
-        if isinstance(self.features, MODELING_FEATURE):
-            self.features = [self.features]
+        self._df = dset.df
+        if isinstance(self._df, pl.DataFrame):
+            self._df = self._df.lazy()
 
-        if split_indices is None:
-            self.split_indices = self.df_splits[COL_SPLIT_INDEX].to_numpy()
-        else:
-            self.split_indices = np.array(split_indices)
+        self._df_splits = dset.df_splits if df_splits is None else df_splits
+        if self._df_splits is None:
+            raise RuntimeError(
+                f"No data splits found for {dset.name}! "
+                "Either provide them when creating the DataLoader "
+                "or verify that the Dataset was loaded and has data splits"
+            )
+        elif isinstance(self._df_splits, pl.DataFrame):
+            self._df_splits = self._df_splits.lazy()
+
+
+        self._labels = self._get_labels(self._df, y_colname)
+        self._split_indices = self._get_split_indices(
+            self._df_splits, split_indices
+        )
+
+        self._iter_idx: int | None = None
+
+
+    def _get_labels(
+        self, 
+        df: pl.LazyFrame,
+        y_colname: str,
+    ) -> List[str]:
+        return (
+            df
+            .select(y_colname)
+            .unique()
+            .sort(by=y_colname)
+            .collect()
+            .to_numpy()
+            .squeeze()
+            .tolist()
+        )
+
+    def _get_split_indices(
+        self, 
+        df: pl.LazyFrame,
+        split_indices: Iterable[int] | None
+    ) -> NDArray:
+        if split_indices is not None:
+            return np.array(split_indices)
+        return (
+            df
+            .select(COL_SPLIT_INDEX)
+            .collect()
+            .to_numpy()
+            .squeeze()
+        )
 
     @property
     def labels(self) -> List[str]:
@@ -353,32 +393,37 @@ class MLDataLoader(Iterator):
 
     @property
     def num_splits(self) -> int:
-        return len(self.split_indices)
+        return len(self._split_indices)
 
     def _dataprep(
         self, 
-        df: pl.DataFrame, 
+        df: pl.DataFrame | pl.LazyFrame, 
+        *,
         shuffle: bool = False, 
         seed: int = 1
     ) -> Tuple[NDArray, NDArray, pl.DataFrame]:
+        _df = df if isinstance(df, pl.DataFrame) else df.collect()
         if shuffle:
-            df = df.sample(
+            _df = _df.sample(
                 fraction=1, 
                 shuffle=True, 
                 seed=seed,
             )
+
+        _series_len = self.series_len if self.series_len is not None else -1
+        _series_pad = self.series_pad if self.series_pad is not None else -1
         return datafeatures.features_dataprep(
-            df,
+            _df,
             self.features,
-            self.series_len,
-            self.series_pad,
-            self.y_colname,
-            self.extra_colnames,
+            series_len=_series_len,
+            series_pad=_series_pad,
+            y_colname=self.y_colname,
+            extra_colnames=self.extra_colnames,
         )
 
-    def _verify_labels(self, df: pl.DataFrame, split_index: int) -> None:
+    def _verify_labels(self, df: pl.LazyFrame, split_index: int) -> None:
         expected = self._labels
-        found = df[self.y_colname].unique().sort().to_list()
+        found = self._get_labels(df, self.y_colname)
         if expected == found:
             return 
 
@@ -403,74 +448,76 @@ class MLDataLoader(Iterator):
         with_train: bool = True,
         with_test: bool = True,
     ) -> SplitData:
-        self._df_train = None
-        self._df_test = None
-        self._X_train = None
-        self._X_test = None
-        self._y_train = None
-        self._y_test = None
-        self._features = None
+        _df_train = None
+        _df_test = None
+        _X_train = None
+        _X_test = None
+        _y_train = None
+        _y_test = None
+        _df_train_feat = None
+        _df_test_feat = None
+        _features = []
 
-        self._df_train, self._df_test = splitting.get_train_test_splits(
-            self.dset.df,
-            self.df_splits,
-            split_index,
-            self.index_colname
+        _df_train, _df_test = splitting.get_train_test_splits(
+            self._df, 
+            self._df_splits,
+            split_index=split_index,
+            index_colname=self.index_colname
         )
-        self._verify_labels(self._df_train, split_index)
-        self._verify_labels(self._df_test, split_index)
+        self._verify_labels(_df_train, split_index)
+        self._verify_labels(_df_test, split_index)
 
         if with_train:
-            self._X_train, self._y_train, self._df_train_feat = \
+            _X_train, _y_train, _df_train_feat = \
                 self._dataprep(
-                    self._df_train,
+                    _df_train,
                     shuffle=self.shuffle_train,
                     seed=self.seed + split_index
                 )
-            self._features = [
+            _features = [
                 col
-                for col in self._df_train_feat.columns
+                for col in _df_train_feat.columns
                 if col not in (self.y_colname, *self.extra_colnames)
             ]
         else:
-            self._df_train = None
+            _df_train = None
 
         if with_test:
-            self._X_test, self._y_test, self._df_test_feat = \
+            _X_test, _y_test, _df_test_feat = \
                 self._dataprep(
-                    self._df_test,
+                    _df_test,
                     shuffle=False,
                 )
-            self._features = [
+            _features = [
                 col
-                for col in self._df_test_feat.columns
+                for col in _df_test_feat.columns
                 if col not in (self.y_colname, *self.extra_colnames)
             ]
         else:
-            self._df_test = None
+            _df_test = None
 
         return SplitData(
-            X_train=self._X_train,
-            X_test=self._X_test,
-            y_train=self._y_train,
-            y_test=self._y_test,
-            df_train_feat=self._df_train_feat,
-            df_test_feat=self._df_test_feat,
+            X_train=_X_train,
+            X_test=_X_test,
+            y_train=_y_train,
+            y_test=_y_test,
+            df_train_feat=_df_train_feat,
+            df_test_feat=_df_test_feat,
             split_index=split_index,
             labels=self.labels,
-            features=self._features,
+            features=_features,
         )
 
     def __next__(self) -> SplitData:
         if self._iter_idx is None:
             self._iter_idx = 0
-        elif self._iter_idx == len(self.df_splits):
+        elif self._iter_idx == self.num_splits:
             raise StopIteration()
-        split_index = self.split_indices[self._iter_idx]
+        split_index = self._split_indices[self._iter_idx]
         self._iter_idx += 1
         return self._get_split_data(split_index)
 
-    def __iter__(self) -> SplitData:
+    def __iter__(self) -> Iterator[SplitData]:
         self._iter_idx = None
         return self
 
@@ -484,15 +531,15 @@ class MLDataLoader(Iterator):
         return self._get_split_data(split_index, with_train=True, with_test=True)
 
     def train_loaders(self) -> Iterable[SplitData]:
-        for split_index in self.split_indices:
+        for split_index in self._split_indices:
             yield self._get_split_data(split_index, with_train=True, with_test=False)
 
     def test_loaders(self) -> Iterable[SplitData]:
-        for split_index in self.split_indices:
+        for split_index in self._split_indices:
             yield self._get_split_data(split_index, with_train=False, with_test=True)
 
     def train_test_loaders(self) -> Iterable[SplitData]:
-        for split_index in self.split_indices:
+        for split_index in self._split_indices:
             yield self._get_split_data(split_index, with_train=True, with_test=True)
 
 

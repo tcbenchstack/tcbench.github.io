@@ -82,9 +82,16 @@ def save_csv(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None
     df.write_csv(save_as)
 
 
-def load_parquet(path: pathlib.Path, echo: bool = True) -> pl.DataFrame:
+def load_parquet(
+    path: pathlib.Path, 
+    *,
+    echo: bool = True,
+    lazy: bool = False,
+) -> pl.DataFrame | pl.LazyFrame:
     cli.logger.log(f"loading: {path}", echo=echo)
-    return pl.read_parquet(path)
+    if not lazy:
+        return pl.read_parquet(path)
+    return pl.scan_parquet(path)
 
 
 def save_parquet(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None:

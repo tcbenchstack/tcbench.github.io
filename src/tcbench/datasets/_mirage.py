@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque, OrderedDict
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Tuple, Iterable, Callable
 
 import pathlib
 import json
@@ -688,7 +688,7 @@ class BaseMirageDataset(Dataset):
         self,
         name: DATASET_NAME,
         subfolder_raw_json: pathlib.Path,
-        raw_sort_by: Iterable[str] = None,
+        raw_sort_by: Iterable[str] | None = None,
     ):
         super().__init__(name=name)
         self.df_app_metadata = (
@@ -733,11 +733,15 @@ class BaseMirageDataset(Dataset):
             .run(self.df)
         )
 
-    def curate(self, recompute_intermediate: bool = False) -> pl.DataFrame:
+    def curate(
+        self, 
+        recompute_intermediate: bool = False
+    ) -> pl.LazyFrame:
         fname = self.folder_raw / "_postprocess.parquet"
         if not fname.exists() or recompute_intermediate:
             self._raw_postprocess()
 
+        df = self.df
         with richutils.SpinnerProgress(
             description=f"Load {self.name}/raw postprocess..."
         ):

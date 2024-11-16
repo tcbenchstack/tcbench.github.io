@@ -102,31 +102,32 @@ def packet_series_cut(
 def features_dataprep(
     df: pl.DataFrame,
     features: Iterable[MODELING_FEATURE],
-    series_len: int,
-    series_pad: int = None,
+    *,
+    series_len: int = -1, 
+    series_pad: int = -1,
     y_colname: str = COL_APP,
-    extra_colnames: Iterable[str] = DEFAULT_EXTRA_COLUMNS,
+    extra_colnames: Iterable[str] | None = DEFAULT_EXTRA_COLUMNS,
 ) -> Tuple[NDArray, NDArray, pl.DataFrame]:
 
     if extra_colnames is None:
         extra_colnames = []
 
     # converting enumeration to string
-    features  = list(map(str, features))
+    _features  = list(map(str, features))
 
     cols_series = [
         col
         for col in packet_series_colnames(df)
-        if col in features
+        if col in _features
     ]
 
     df_feat = df.select(
-        *features,
+        *_features,
         y_colname,
         *extra_colnames
     )
 
-    if series_pad is not None:
+    if series_pad > 0:
         # enforce padding (where needed)
         df_feat = df_feat.with_columns(**{
               col: expr_packet_series_pad(
@@ -141,28 +142,29 @@ def features_dataprep(
     def _struct_field_name(col, idx):
         return f"{col}_{idx}"
 
-    df_feat = (df_feat
-        # discard rows if series are too short
-        .filter(
-            pl.col(cols_series[0]).list.len() >= series_len
-        )
-        .with_columns(**{
-            col: (
-                # cut series ...and packet them into struct
-                expr_packet_series_cut(col, series_len)
-                .list
-                .to_struct(
-                    fields=[
-                        f"{col}_{idx}"
-                        for idx in range(1, series_len+1)
-                    ]
-                )
+    if series_len > 0:
+        df_feat = (df_feat
+            # discard rows if series are too short
+            .filter(
+                pl.col(cols_series[0]).list.len() >= series_len
             )
-            for col in cols_series
-        })
-        # unnest structs (so each series value is a separate column)
-        .unnest(*cols_series)
-    )
+            .with_columns(**{
+                col: (
+                    # cut series ...and packet them into struct
+                    expr_packet_series_cut(col, series_len)
+                    .list
+                    .to_struct(
+                        fields=[
+                            f"{col}_{idx}"
+                            for idx in range(1, series_len+1)
+                        ]
+                    )
+                )
+                for col in cols_series
+            })
+            # unnest structs (so each series value is a separate column)
+            .unnest(*cols_series)
+        )
 
     y = df_feat[y_colname].to_numpy()
     X = df_feat.drop(y_colname, *extra_colnames).to_numpy()

@@ -513,10 +513,10 @@ class Dataset:
     def load(
         self, 
         dataset_type: DATASET_TYPE, 
-        n_rows: int = None, 
-        min_packets:int = None,
-        columns: Iterable[str] = None,
-        lazy: bool = False,
+        n_rows: int | None = None, 
+        min_packets:int | None = None,
+        columns: Iterable[str] | None = None,
+        lazy: bool = True,
         echo: bool = True,
     ) -> Dataset:
         folder = self.folder_curate
@@ -530,41 +530,44 @@ class Dataset:
         else:
             columns = list(map(str, columns))
 
-        self.df = None
-        self.df_stats = None
-        self.df_splits = None
+        self.df: pl.DataFrame | pl.LazyFrame | None = None
+        self.df_stats: pl.DataFrame | pl.LazyFrame | None = None
+        self.df_splits: pl.DataFrame | pl.LazyFrame | None = None
         with richutils.SpinnerProgress(
             description=f"Loading {self.name}/{dataset_type}...",
             visible=echo,
         ):
-            fname = folder / f"{self.name}.parquet",
+            fname = folder / f"{self.name}.parquet"
             self.df = pl.scan_parquet(fname, n_rows=n_rows)
             if dataset_type != DATASET_TYPE.RAW:
                 self.df = self.df.filter(
                     pl.col("packets") >= min_packets
                 )
             self.df = self.df.select(*columns)
+            if not lazy:
+                self.df = self.df.collect()
 
             fname = folder / f"{self.name}_stats.parquet"
-            if min_packets != -1 and fname.exists():
-                self.df_stats = pl.scan_parquet(
-                    folder / f"{self.name}_stats.parquet"
+            if min_packets == -1 and fname.exists():
+                self.df_stats = fileutils.load_parquet(
+                    folder / f"{self.name}_stats.parquet",
+                    echo=False,
+                    lazy=lazy,
                 )
 
             if (folder / f"{self.name}_splits.parquet").exists():
-                self.df_splits = pl.scan_parquet(
-                    folder / f"{self.name}_splits.parquet"
+                self.df_splits = fileutils.load_parquet(
+                    folder / f"{self.name}_splits.parquet",
+                    echo=False,
+                    lazy=lazy
                 )
-            
-            if not lazy:
-                self.df = self.df.collect()
-                if self.df_stats is not None:
-                    self.df_stats = self.df_stats.collect()
-                if self.df_splits is not None:
-                    self.df_splits = self.df_splits.collect()
 
         self.metadata_schema = self._load_schema(dataset_type)
         return self
+
+    @property
+    def is_loaded(self) -> bool:
+        return self.df is not None
 
     @abc.abstractmethod
     def raw(self) -> Any:

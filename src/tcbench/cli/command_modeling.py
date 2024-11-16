@@ -152,7 +152,7 @@ def run(
     seed: int,
     hyperparams_grid: Dict[str, Tuple[Any]],
 ) -> None:
-    """Run an experiment or campaign."""
+    """Run a campaign."""
 
     loops.train_loop(
         dataset_name=dataset_name,

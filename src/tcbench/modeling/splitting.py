@@ -4,7 +4,11 @@ from typing import Tuple
 
 import polars as pl
 
+from tcbench.core import to_lazy
+
 from tcbench.modeling.columns import (
+    COL_APP,
+    COL_ROW_ID,
     SPLIT_NAME_TEST,
     SPLIT_NAME_TRAIN,
     COL_SPLIT_NAME,
@@ -56,9 +60,10 @@ def _verify_split_indices_table(
     return True
 
 def _get_split_indices(
-    df: pl.DataFrame, 
-    y_colname: str = "app",
-    index_colname: str = "row_id", 
+    df: pl.LazyFrame, 
+    *,
+    y_colname: str = COL_APP,
+    index_colname: str = COL_ROW_ID,
     test_size: float = 0.1,
     seed: int = 1, 
 ) -> pl.DataFrame:
@@ -103,7 +108,11 @@ def _get_split_indices(
 
     return df_split_indices
 
-def _split_indices_to_list(df: pl.DataFrame, split_index: int, index_colname:str = "row_id") -> pl.DataFrame:
+def _split_indices_to_list(
+    df: pl.LazyFrame, 
+    split_index: int, 
+    index_colname:str = COL_ROW_ID,
+) -> pl.DataFrame:
     return (
         df
         .group_by(COL_SPLIT_NAME)
@@ -130,10 +139,16 @@ def _split_indices_to_list(df: pl.DataFrame, split_index: int, index_colname:str
 
 
 def _split_indices_from_list(
-    df_splits: pl.DataFrame, 
+    df_splits: pl.LazyFrame, 
     split_index: int, 
-    index_colname: str = "row_id"
-) -> pl.DataFrame:
+    *,
+    index_colname: str = COL_ROW_ID,
+) -> pl.LazyFrame:
+    """Extract the train and test indices from a specific split
+    are compose a LazyFrame with two columns reporting the 
+    row index and the related split type
+    """
+    expr = pl.col(COL_SPLIT_INDEX) == pl.lit(split_index)
     expr = pl.col(COL_SPLIT_INDEX) == pl.lit(split_index)
     return pl.concat((
         df_splits
@@ -192,11 +207,15 @@ def split_monte_carlo(
 
 
 def get_train_test_splits(
-    df: pl.DataFrame, 
-    df_splits: pl.DataFrame, 
+    df: pl.DataFrame | pl.LazyFrame, 
+    df_splits: pl.DataFrame | pl.LazyFrame, 
+    *,
     split_index: int = 1,
-    index_colname: str = "row_id"
-) -> Tuple[pl.DataFrame, pl.DataFrame]:
+    index_colname: str = COL_ROW_ID,
+) -> Tuple[pl.LazyFrame, pl.LazyFrame]:
+    df = to_lazy(df)
+    df_splits = to_lazy(df_splits)
+
     df_split_indices = _split_indices_from_list(
         df_splits, 
         split_index, 
@@ -210,5 +229,3 @@ def get_train_test_splits(
         df_tmp.filter(pl.col(COL_SPLIT_NAME) == SPLIT_NAME_TRAIN),
         df_tmp.filter(pl.col(COL_SPLIT_NAME) == SPLIT_NAME_TEST)
     )
-
-

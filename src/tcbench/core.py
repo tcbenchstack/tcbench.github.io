@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import polars as pl
+
 import multiprocessing
 
 from typing import Any, Callable, Iterable
@@ -52,3 +54,8 @@ class Pool1N:
             for res in self._pool.imap_unordered(func, data):
                 yield res
 
+
+def to_lazy(df: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    if isinstance(df, pl.DataFrame):
+        return df.lazy()
+    return df

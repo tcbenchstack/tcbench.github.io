@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Iterable, Dict, Any
+from typing import Iterable, Dict, Any
 
 import xgboost as xgb
 
@@ -27,10 +27,3 @@ class XGBoostClassifier(MLModel):
             seed=seed,
             hyperparams=hyperparams,
         )
-
-    @property
-    def hyperparams_doc(self) -> str:
-        doc = xgb.XGBClassifier.__doc__
-        if doc is None:
-            return super().hyperparams_doc
-        return doc

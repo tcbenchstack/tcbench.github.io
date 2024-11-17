@@ -23,9 +23,11 @@ def mlmodel_factory(
     seed: int = 1,
     num_workers: int = 1,
     *,
-    hyperparams: Dict[str, Any]
+    hyperparams: Dict[str, Any] | None = None
 ) -> mlcore.MLModel:
     cls = MODEL_NAME_TO_CLASS.get(name, None)
+    if hyperparams is None:
+        hyperparams = dict()
     if cls:
         return cls(
             labels=labels,

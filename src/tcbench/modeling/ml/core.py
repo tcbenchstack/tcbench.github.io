@@ -8,6 +8,8 @@ import itertools
 
 from typing import Tuple, List, Dict, Any, Iterable, Callable
 from numpy.typing import NDArray
+from rich.console import RenderableType
+
 from sklearn.preprocessing import LabelEncoder
 
 from dataclasses import dataclass
@@ -543,19 +545,8 @@ class MLDataLoader(Iterator):
             yield self._get_split_data(split_index, with_train=True, with_test=True)
 
 
-def autosave_init_params(init_func):
-    def wrapper(self, *args, **kwargs):
-        init_func(self, *args, **kwargs)
-        self._params = {
-            key: value
-            for key, value in kwargs.items()
-            if key != "hyperparams"
-        }
-        self._params["args"] = args
-    return wrapper
 
 class MLModel:
-    @autosave_init_params
     def __init__(
         self,
         labels: Iterable[str],
@@ -578,8 +569,55 @@ class MLModel:
     def name(self) -> str:
         return self._model.__class__.__name__
 
-    @property
-    def hyperparams_doc(self) -> str:
+    def __rich_docs__(self) -> RenderableType:
+        from rich.table import Table
+        from rich import box
+        from rich.console import Console
+        from rich.pretty import pprint
+
+        table1 = Table(
+            'Python repr()',
+            box=box.MINIMAL,
+            expand=True,
+            pad_edge=False,
+            padding=(0,0,0,0),
+            show_edge=False,
+        )
+        console = Console()
+        with console.capture() as capture:
+            pprint(self._model, console=console)
+        table1.add_row(capture.get())
+
+        table2 = Table(
+            'Hyperparams',
+            box=box.MINIMAL,
+            expand=True,
+            pad_edge=False,
+            padding=(0,0,0,0),
+            show_edge=False,
+        )
+        table2.add_row(
+            self._model.__doc__
+        )
+
+        grid = Table(
+            title=self.name, 
+            title_justify="left",
+            expand=True,
+            box=None,
+            show_header=False,
+            show_footer=False,
+            pad_edge=False,
+            padding=(0,0,0,0),
+            show_edge=False,
+        )
+        grid.add_column('')
+        grid.add_row()
+        grid.add_row(table1)
+        grid.add_row(table2)
+        return grid
+
+
         return "No documentation available."
 
     def _fit_label_encoder(self, labels) -> LabelEncoder:

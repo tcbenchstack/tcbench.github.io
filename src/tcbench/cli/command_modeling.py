@@ -188,7 +188,6 @@ def hyperparam_docs(
     """Shows hyper parameters documentations for modelingn algorithms."""
 
     from tcbench.cli.richutils import console
-    from rich.pretty import pprint
 
     mdl = factory.mlmodel_factory(
         name=method_name,
@@ -197,14 +196,4 @@ def hyperparam_docs(
         seed=1,
     )
 
-    console.print("Class object representation")
-    pprint(mdl._model)
-
-    console.print()
-    console.print("Class docstring")
-    console.print(mdl.hyperparams_doc)
-
-
-
-        
-
+    console.print(mdl.__rich_docs__())

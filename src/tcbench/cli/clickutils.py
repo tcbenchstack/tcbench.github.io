@@ -5,7 +5,10 @@ import rich_click as click
 from typing import List, Dict, Any, Callable, Sequence, Tuple
 
 import functools
+import pathlib
+import sys
 
+from tcbench import fileutils
 from tcbench.core import StringEnum
 from tcbench.datasets import (
     DATASET_NAME,
@@ -126,6 +129,58 @@ def parse_remainder(
 #CLICK_PARSE_INPUT_REPR = functools.partial(_parse_enum_from_str, enumeration=MODELING_INPUT_REPR_TYPE)
 
 CLICK_PARSE_STRTOINT = _parse_str_to_int
+
+
+def save_commandline(cli_option: str, echo: bool = True) -> Any:
+    """
+    Decorator to save the command line retrieved from sys.argv.
+    This is meant to be associated to Click command having an option
+    for saving output to disk. As such, the decorator requires
+    as input the name of such command line option.
+    """
+    def _save(save_to: pathlib.Path | None, echo: bool = True) -> None:
+        if save_to is not None:
+            save_to = pathlib.Path(save_to)
+            cmd = " ".join(sys.argv) + "\n"
+            fileutils.save_txt(cmd, save_to / "command.txt", echo)
+
+    def _decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            _save(kwargs.get(cli_option, None), echo)
+            return func(*args, **kwargs)
+        return wrapper
+
+    return _decorator
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def compose_help_string_from_list(message: str, items: Sequence[str]) -> str:

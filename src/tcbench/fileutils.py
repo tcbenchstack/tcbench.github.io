@@ -10,19 +10,16 @@ import pathlib
 import requests
 import tarfile
 import zipfile
-import os
 import shutil
 import sys
 
 from tcbench import cli
 from tcbench.cli import richutils
 
-
 def _get_module_folder(name: str) -> pathlib.Path:
     module = sys.modules[name]
     folder = pathlib.Path(module.__file__).parent
     return folder
-
 
 def _check_file_exists(path: pathlib.Path) -> pathlib.Path:
     path = pathlib.Path(path)
@@ -122,6 +119,28 @@ def load_if_exists(path: pathlib.Path, echo: bool = True, error_policy: str = "r
     return func(path, echo=echo)
 
 
+def save_txt(text: str, save_as: pathlib.Path, echo: bool = True) -> None:
+    save_as = pathlib.Path(save_as)
+    create_folder(save_as.parent)
+    if text[-1] != "\n":
+        text += "\n"
+    cli.logger.log(f"saving: {save_as}", echo=echo)
+    save_as.write_text(text)
+
+
+def load_txt(path: pathlib.Path, echo: bool = True) -> str:
+    path = _check_file_exists(path)
+    cli.logger.log(f"loading: {path}", echo=echo)
+    return path.read_text()
+
+
+def save_sys_argv(save_to: pathlib.Path, echo: bool = True) -> None:
+    save_to = pathlib.Path(save_to)
+    cmd = " ".join(sys.argv) + "\n"
+    save_txt(cmd, save_to / "command.txt", echo)
+
+
+
 def _download_via_requests(
     url: str,
     save_as: pathlib.Path,
@@ -209,7 +228,7 @@ def list_compressed_files(path: pathlib.Path) -> List[pathlib.Path]:
 
 def unzip(
     src: str | pathlib.Path, 
-    dst: str | pathlib.Path = None, 
+    dst: str | pathlib.Path | None = None, 
     progress:bool=True,
     remove_dst: bool = True
 ) -> pathlib.Path:
@@ -234,7 +253,7 @@ def unzip(
         dst.mkdir(parents=True)
 
     with (
-        richutils.SpinnerProgress(f"Unpacking...", visible=progress), 
+        richutils.SpinnerProgress("Unpacking...", visible=progress), 
         zipfile.ZipFile(src) as fzipped,
     ):
         fzipped.extractall(dst)
@@ -243,7 +262,7 @@ def unzip(
 
 def untar(
     src: pathlib.Path, 
-    dst: pathlib.Path = None, 
+    dst: pathlib.Path | None = None, 
     progress: bool = True,
     remove_dst: bool = True,
 ) -> pathlib.Path:
@@ -268,7 +287,7 @@ def untar(
         dst.mkdir(parents=True)
 
     with (
-        richutils.SpinnerProgress(f"Unpacking...", visible=progress), 
+        richutils.SpinnerProgress("Unpacking...", visible=progress), 
         tarfile.open(src, "r:gz") as ftar
     ):
         ftar.extractall(dst)

@@ -4,6 +4,7 @@ import rich_click as click
 
 from typing import Iterable, Dict, Tuple, Any, List
 import pathlib
+import sys
 
 from tcbench import (
     DATASET_NAME,
@@ -136,6 +137,7 @@ def modeling(ctx):
     type=click.UNPROCESSED,
     callback=clickutils.parse_remainder,
 )
+@clickutils.save_commandline('save_to')
 @click.pass_context
 def run(
     ctx, 
@@ -153,6 +155,8 @@ def run(
     hyperparams_grid: Dict[str, Tuple[Any]],
 ) -> None:
     """Run a campaign."""
+
+    sys.exit()
 
     loops.train_loop(
         dataset_name=dataset_name,
@@ -184,6 +188,7 @@ def hyperparam_docs(
     method_name: MODELING_METHOD_NAME,
 ):
     """Shows hyper parameters documentations for modelingn algorithms."""
+
     from tcbench.cli.richutils import console
     from rich.pretty import pprint
 

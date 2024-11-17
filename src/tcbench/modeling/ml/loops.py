@@ -275,6 +275,9 @@ def train_loop(
     name: str = "",
 ) -> Any:
 
+    if len(hyperparams_grid) > 0:
+        print_hyperparams_grid(hyperparams_grid)
+
     if split_indices is None:
         dset = _load_dataset(
             dataset_name=dataset_name,

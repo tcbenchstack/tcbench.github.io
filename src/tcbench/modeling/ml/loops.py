@@ -302,6 +302,9 @@ def train_loop(
             total=len(split_indices),
             description="Prepare trainers..."
         ) as progress:
+            subfolder = save_to
+            if save_to is not None:
+                subfolder = save_to / f"grid_{idx:03d}"
             for split_index in split_indices:
                 trainer = _trainer_init(
                     dataset_name=dataset_name,
@@ -309,7 +312,7 @@ def train_loop(
                     features=features,
                     series_len=series_len,
                     seed=seed,
-                    save_to=save_to,
+                    save_to=subfolder,
                     track_train=track_train,
                     split_index=split_index,
                     hyperparams=hyperparams,

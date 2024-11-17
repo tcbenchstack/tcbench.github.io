@@ -13,6 +13,7 @@ from tcbench import (
     DATASET_NAME,
     DATASET_TYPE,
     get_dataset,
+    cli,
 )
 from tcbench.datasets import Dataset
 from tcbench.cli import richutils
@@ -234,9 +235,9 @@ def print_hyperparams_grid(hyperparams_grid: Dict[str, Any] | None) -> None:
         show_header=True,
         show_footer=True,
     )
-    table.add_column("Param_name")
-    table.add_column("Num_values", justify="right")
-    table.add_column("Param_values")
+    table.add_column("Name")
+    table.add_column("Num.", justify="right")
+    table.add_column("Values")
     total = 1
     for param_name in sorted(hyperparams_grid.keys()):
         param_value = hyperparams_grid[param_name]
@@ -249,12 +250,11 @@ def print_hyperparams_grid(hyperparams_grid: Dict[str, Any] | None) -> None:
             str(len(param_value)),
             str(param_value)
         )
-    table.columns[0].footer = "Total configs."
+    table.columns[0].footer = "Grid size"
     table.columns[1].footer = str(total)
 
     console.print()
     console.print(table)
-
 
 
 def train_loop(
@@ -295,10 +295,8 @@ def train_loop(
             .tolist()
         )          
 
-    for idx, hyperparams in enumerate(
-         _flatten_hyperparams_grid(hyperparams_grid), 
-         start=1
-    ):
+    _flat_grid = _flatten_hyperparams_grid(hyperparams_grid)
+    for idx, hyperparams in enumerate(_flat_grid, start=1):
         trainers = []
         with richutils.Progress(
             total=len(split_indices),
@@ -324,6 +322,7 @@ def train_loop(
                 trainers.append(trainer)
                 progress.update()
 
+        cli.logger.log(f"Grid ({idx}/{len(_flat_grid)}): {hyperparams}")
         _trainer_loop(
             trainers,
             num_workers=num_workers,

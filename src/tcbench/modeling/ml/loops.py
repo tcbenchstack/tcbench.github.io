@@ -283,55 +283,9 @@ def train_loop(
                 trainers.append(trainer)
                 progress.update()
 
-        continue
         _trainer_loop(
             trainers,
             num_workers=num_workers,
             with_progress=with_progress,
             track_train=track_train
         )
-
-    # dset = _load_dataset(
-    #     dataset_name=dataset_name,
-    #     features=features,
-    #     series_len=series_len,
-    #     y_colname=y_colname,
-    #     index_colname=index_colname,
-    #     extra_colnames=extra_colnames
-    # )
-    #
-    # dataloader = MLDataLoader(
-    #     dset,
-    #     features=features,
-    #     df_splits=dset.df_splits,
-    #     split_indices=split_indices,
-    #     y_colname=y_colname,
-    #     index_colname=index_colname,
-    #     series_len=series_len,
-    #     series_pad=None,
-    #     extra_colnames=extra_colnames,
-    #     shuffle_train=True,
-    #     seed=seed,
-    # )
-    #
-    # for idx, hyperparams in enumerate(
-    #     _flatten_hyperparams_grid(hyperparams_grid), 
-    #     start=1
-    # ):
-    #     subfolder = save_to
-    #     if save_to is not None:
-    #         subfolder = save_to / f"grid_{idx:03d}"
-    #
-    #     _train_loop_single(
-    #         dataloader=dataloader,
-    #         method_name=method_name,
-    #         features=features,
-    #         seed=seed,
-    #         save_to=subfolder,
-    #         track_train=track_train,
-    #         num_workers=num_workers,
-    #         hyperparams=hyperparams,
-    #         with_progress=with_progress,
-    #         name=name,
-    #     )
-    #

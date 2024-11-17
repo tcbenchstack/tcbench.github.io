@@ -131,7 +131,12 @@ def parse_remainder(
 CLICK_PARSE_STRTOINT = _parse_str_to_int
 
 
-def save_commandline(cli_option: str, echo: bool = True) -> Any:
+def save_commandline(
+    cli_option: str, 
+    *,
+    cli_skip_option: str = "", 
+    echo: bool = True
+) -> Any:
     """
     Decorator to save the command line retrieved from sys.argv.
     This is meant to be associated to Click command having an option
@@ -147,7 +152,9 @@ def save_commandline(cli_option: str, echo: bool = True) -> Any:
     def _decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            _save(kwargs.get(cli_option, None), echo)
+            skip = kwargs.get(cli_skip_option, False)
+            if not skip:
+                _save(kwargs.get(cli_option, None), echo)
             return func(*args, **kwargs)
         return wrapper
 

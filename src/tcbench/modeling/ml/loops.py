@@ -216,6 +216,47 @@ def _trainer_loop(
                 row["f1_train"] = clsres_train.weighted_f1
             progress.add_row(**row)
 
+def print_hyperparams_grid(hyperparams_grid: Dict[str, Any] | None) -> None:
+    from tcbench.cli.richutils import console
+    from rich.table import Table
+    from rich import box
+
+    if hyperparams_grid is None or len(hyperparams_grid) == 0:
+        console.print("No hyperparam grid!")
+        return
+
+    table = Table(
+        title="Hyperparams Grid",
+        title_justify="left",
+        show_edge=False,
+        pad_edge=True,
+        box=box.HORIZONTALS,
+        show_header=True,
+        show_footer=True,
+    )
+    table.add_column("Param_name")
+    table.add_column("Num_values", justify="right")
+    table.add_column("Param_values")
+    total = 1
+    for param_name in sorted(hyperparams_grid.keys()):
+        param_value = hyperparams_grid[param_name]
+        num_params = 1
+        if isinstance(param_value, (list, set, tuple)):
+            num_params = len(param_value)
+        total *= num_params
+        table.add_row(
+            param_name,
+            str(len(param_value)),
+            str(param_value)
+        )
+    table.columns[0].footer = "Total configs."
+    table.columns[1].footer = str(total)
+
+    console.print()
+    console.print(table)
+
+
+
 def train_loop(
     dataset_name: DATASET_NAME,
     method_name: MODELING_METHOD_NAME,

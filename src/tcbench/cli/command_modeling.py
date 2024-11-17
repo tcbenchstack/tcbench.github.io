@@ -18,6 +18,7 @@ from tcbench.modeling import (
     factory,
 )
 
+
 @click.group()
 @click.pass_context
 def modeling(ctx):
@@ -44,7 +45,7 @@ def modeling(ctx):
     type=clickutils.CHOICE_DATASET_TYPE,
     callback=clickutils.parse_dataset_type,
     help="Dataset type.",
-    #default=click.Choice(DATASET_TYPE.CURATE),
+    # default=click.Choice(DATASET_TYPE.CURATE),
 )
 @click.option(
     "--method",
@@ -72,7 +73,7 @@ def modeling(ctx):
     required=False,
     default=pathlib.Path("./model"),
     type=pathlib.Path,
-    help="Output folder."
+    help="Output folder.",
 )
 @click.option(
     "--workers",
@@ -81,7 +82,7 @@ def modeling(ctx):
     required=False,
     default=1,
     type=int,
-    help="Number of parallel workers."
+    help="Number of parallel workers.",
 )
 @click.option(
     "--split-indices",
@@ -127,9 +128,17 @@ def modeling(ctx):
     required=False,
     type=int,
     default=1,
-    help=\
-        "Seed for dataprep and model initialization. "
-        "The value specified is summmed to the split index."
+    help="Seed for dataprep and model initialization. "
+    "The value specified is summmed to the split index.",
+)
+@click.option(
+    "--dry-run",
+    "-D",
+    "dry_run",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Show a summary the modeling grid search (if any)"
 )
 @click.argument(
     "hyperparams_grid",
@@ -137,11 +146,11 @@ def modeling(ctx):
     type=click.UNPROCESSED,
     callback=clickutils.parse_remainder,
 )
-@clickutils.save_commandline('save_to')
+@clickutils.save_commandline("save_to", cli_skip_option="dry_run")
 @click.pass_context
 def run(
-    ctx, 
-    dataset_name: DATASET_NAME, 
+    ctx,
+    dataset_name: DATASET_NAME,
     dataset_type: DATASET_TYPE,
     method_name: MODELING_METHOD_NAME,
     series_len: int,
@@ -152,9 +161,14 @@ def run(
     track_train: bool,
     run_name: str,
     seed: int,
+    dry_run: bool,
     hyperparams_grid: Dict[str, Tuple[Any]],
 ) -> None:
     """Run a campaign."""
+
+    if dry_run:
+        loops.print_hyperparams_grid(hyperparams_grid)
+        sys.exit(0)
 
     loops.train_loop(
         dataset_name=dataset_name,

@@ -28,6 +28,23 @@ def _check_file_exists(path: pathlib.Path) -> pathlib.Path:
     return path
 
 
+def _convert_data_to_yaml(data: Dict[str, Any]) -> Dict[str, int|float|str|bool]:
+    new_data = dict()
+    for key, value in data.items():
+        new_data[key] = value
+        if value is not None:
+            if isinstance(value, (int, float, bool, str)):
+                continue
+            if isinstance(value, pathlib.Path):
+                new_data[key] = str(value)
+                continue
+            if isinstance(value, (set, tuple, list)):
+                new_data[key] = list(map(str, value))
+            else:
+                new_data[key] = str(value)
+    return new_data
+
+
 def create_folder(folder: pathlib.Path, echo: bool = True) -> pathlib.Path:
     folder = pathlib.Path(folder)
     if not folder.exists():
@@ -64,7 +81,7 @@ def save_yaml(data: Any, save_as: pathlib.Path, echo: bool = True) -> None:
     create_folder(save_as.parent)
     cli.logger.log(f"saving: {save_as}", echo=echo)
     with open(save_as, "w") as fout:
-        yaml.dump(data, fout, sort_keys=False)
+        yaml.dump(_convert_data_to_yaml(data), fout, sort_keys=False)
 
 
 def load_csv(path: pathlib.Path, echo: bool = True) -> pl.DataFrame:

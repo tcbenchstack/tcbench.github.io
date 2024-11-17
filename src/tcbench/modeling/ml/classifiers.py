@@ -14,7 +14,8 @@ class XGBoostClassifier(MLModel):
         features: Iterable[MODELING_FEATURE],
         seed: int = 1,
         num_workers: int | None = None,
-        **hyperparams: Dict[str, Any],
+        *,
+        hyperparams: Dict[str, Any],
     ): 
         if num_workers is not None and "n_jobs" not in hyperparams:
             hyperparams["n_jobs"] = num_workers
@@ -24,7 +25,7 @@ class XGBoostClassifier(MLModel):
             features=features,
             model_class=xgb.XGBClassifier,
             seed=seed,
-            **hyperparams,
+            hyperparams=hyperparams,
         )
 
     @property

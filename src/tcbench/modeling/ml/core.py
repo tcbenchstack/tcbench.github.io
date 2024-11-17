@@ -543,20 +543,34 @@ class MLDataLoader(Iterator):
             yield self._get_split_data(split_index, with_train=True, with_test=True)
 
 
+def autosave_init_params(init_func):
+    def wrapper(self, *args, **kwargs):
+        init_func(self, *args, **kwargs)
+        self._params = {
+            key: value
+            for key, value in kwargs.items()
+            if key != "hyperparams"
+        }
+        self._params["args"] = args
+    return wrapper
+
 class MLModel:
+    @autosave_init_params
     def __init__(
         self,
         labels: Iterable[str],
         features: Iterable[MODELING_FEATURE],
         model_class: Callable,
         seed: int = 1,
-        **hyperparams: Dict[str, Any],
+        *,
+        hyperparams: Dict[str, Any],
     ):
         self.labels = labels
         self.features = features
         self.hyperparams = hyperparams
         self.seed = seed
 
+        self._params = dict()
         self._label_encoder = self._fit_label_encoder(self.labels)
         self._model = model_class(**hyperparams)
 
@@ -607,6 +621,11 @@ class MLModel:
         fileutils.save_yaml(
             self.hyperparams, 
             save_to / "hyperparams.yml",
+            echo=echo
+        )
+        fileutils.save_yaml(
+            self._params,
+            save_to / "params.yml",
             echo=echo
         )
         return self

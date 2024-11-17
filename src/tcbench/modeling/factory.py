@@ -22,7 +22,8 @@ def mlmodel_factory(
     features: Iterable[MODELING_FEATURE],
     seed: int = 1,
     num_workers: int = 1,
-    **hyperparams: Dict[str, Any]
+    *,
+    hyperparams: Dict[str, Any]
 ) -> mlcore.MLModel:
     cls = MODEL_NAME_TO_CLASS.get(name, None)
     if cls:
@@ -31,6 +32,6 @@ def mlmodel_factory(
             features=features,
             seed=seed,
             num_workers=num_workers,
-            **hyperparams
+            hyperparams=hyperparams,
         )
     raise RuntimeError(f"ModelNotFound: unrecognized model name {name}")

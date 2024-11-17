@@ -3,9 +3,13 @@ from __future__ import annotations
 import polars as pl
 
 import multiprocessing
+import functools
+import pathlib
 
 from typing import Any, Callable, Iterable
 from enum import Enum
+
+from tcbench import fileutils
 
 class StringEnum(Enum):
     @classmethod
@@ -59,3 +63,33 @@ def to_lazy(df: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
     if isinstance(df, pl.DataFrame):
         return df.lazy()
     return df
+
+def save_params(
+    path_param: str, 
+    split_index_param: str = "", 
+    *,
+    echo: bool = True
+):
+    def _save(*args, **kwargs):
+        save_to = kwargs.get(path_param, None) 
+        split_index = kwargs.get(split_index_param, None)
+        if save_to is None:
+            return 
+
+        save_to = pathlib.Path(save_to)
+        if split_index is not None:
+            save_to /= f"split_{split_index:02d}"
+
+        data = kwargs.copy()
+        if len(args) > 0:
+            data["args"] = args
+        del(data[path_param])
+        fileutils.save_yaml(data, save_to / "params.yml", echo)
+
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            _save(*args, **kwargs)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator

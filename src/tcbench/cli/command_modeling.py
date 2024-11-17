@@ -156,8 +156,6 @@ def run(
 ) -> None:
     """Run a campaign."""
 
-    sys.exit()
-
     loops.train_loop(
         dataset_name=dataset_name,
         method_name=method_name,

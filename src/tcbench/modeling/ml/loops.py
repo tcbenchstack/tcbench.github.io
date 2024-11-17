@@ -8,7 +8,7 @@ import multiprocessing
 
 from typing import Iterable, Any, Dict, Tuple, List
 
-from tcbench.core import Pool1N
+from tcbench.core import Pool1N, save_params
 from tcbench import (
     DATASET_NAME,
     DATASET_TYPE,
@@ -84,7 +84,9 @@ def _load_dataset(
         lazy=True,
     )
     return dset
+        
 
+@save_params("save_to", "split_index", echo=True)
 def _trainer_init(
     dataset_name: DATASET_NAME,
     method_name: MODELING_METHOD_NAME,
@@ -147,7 +149,7 @@ def _trainer_init(
             if num_workers == 1 else 
             int(np.ceil(max_workers / num_workers))
         ),
-        **hyperparams,
+        hyperparams=hyperparams,
     )
 
     return MLTrainer(
@@ -281,6 +283,7 @@ def train_loop(
                 trainers.append(trainer)
                 progress.update()
 
+        continue
         _trainer_loop(
             trainers,
             num_workers=num_workers,

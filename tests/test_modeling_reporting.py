@@ -1,8 +1,8 @@
-from pyarrow import uint32
 import pytest
 
 import polars as pl
 import numpy as np
+import pandas as pd
 
 import polars.testing
 from tcbench.modeling import reporting
@@ -309,10 +309,166 @@ def test_confusion_matrix(input_data, expected):
     assert (mtx_expected == mtx_found).all()
 
 
+@pytest.mark.parametrize("test_input,expected", [
+    (
+        pl.DataFrame(dict(
+            y_true=list("cba") + ["_total_"],
+            c=np.array([3, 1, 0, 4]),
+            b=np.array([0, 1, 2, 3]),
+            a=np.array([0, 1, 1, 2]),
+            e=np.zeros(4, dtype=int),
+            d=np.zeros(4, dtype=int),
+            _total_=np.array([3, 3, 3, 9])
+        )),
+        pl.DataFrame(dict(
+            y_true=list("ccc b b b aa a".replace(" ", "")),
+            y_pred=list("ccc c b a bb a".replace(" ", "")),
+        ))
+    ),
+    (
+        pl.DataFrame(dict(
+            y_true=["a", "c", "b"],
+            a=[10, 0, 1],
+            c=[0, 20, 1],
+            b=[1, 5, 15],
+        )),
+        pl.DataFrame(dict(
+            y_true=list("a"*10 + "a" + "c"*20 + "c"*5 + "b" + "b" + "b"*15),
+            y_pred=list("a"*10 + "b" + "c"*20 + "b"*5 + "a" + "c" + "b"*15),
+        ))
+    )
+])
+def test_y_columns_from_confusion_matrix(test_input, expected):
+    res = reporting.y_columns_from_confusion_matrix(test_input)
+
+    polars.testing.assert_frame_equal(
+        res.sort(by=["y_true", "y_pred"]),
+        expected.sort(by=["y_true", "y_pred"])
+    )
 
 
+@pytest.mark.parametrize("test_input, other_input_params, expected_order", [
+    (
+        pl.DataFrame(dict(
+            y_true=list("cba") + ["_total_"],
+            c=np.array([3, 1, 0, 4]),
+            b=np.array([0, 1, 2, 3]),
+            a=np.array([0, 1, 1, 2]),
+            e=np.zeros(4, dtype=int),
+            d=np.zeros(4, dtype=int),
+            _total_=np.array([3, 3, 3, 9])
+        )),
+        dict(),
+        list("abc"),
+    ),
+    (
+        pl.DataFrame(dict(
+            y_true=["a", "c", "b", "_total_"],
+            a=[10, 0, 1, 11],
+            c=[0, 20, 1, 21],
+            b=[1, 5, 15, 21],
+            _total_=[11, 25, 17, 53],
+        )),
+        dict(),
+        list("abc")
+    ),
+    (
+        pl.DataFrame(dict(
+            y_true=["a", "c", "b", "_total_"],
+            a=[10, 0, 1, 11],
+            c=[0, 20, 1, 21],
+            b=[1, 5, 15, 21],
+            _total_=[11, 25, 17, 53],
+        )),
+        dict(
+            order="samples",
+            descending=False,
+        ),
+        list("abc")
+    ),
+    (
+        pl.DataFrame(dict(
+            y_true=["a", "c", "b", "_total_"],
+            a=[10, 0, 1, 11],
+            c=[0, 20, 1, 21],
+            b=[1, 5, 15, 21],
+            _total_=[11, 25, 17, 53],
+        )),
+        dict(
+            order="samples",
+            descending=True,
+        ),
+        list("cba")
+    )
+])
+def test_classification_report_from_confusion_matrix(
+    test_input, other_input_params, expected_order
+):
+    res = reporting.classification_report_from_confusion_matrix(
+        test_input,
+        **other_input_params,
+    )
+
+    labels = res.select(pl.col("label")).to_numpy().squeeze()[:-3].tolist()
+    assert labels == expected_order
+
+    from sklearn.metrics import classification_report
+    df_labels = reporting.y_columns_from_confusion_matrix(test_input)
+    expected = pl.from_pandas(
+        pd.DataFrame(
+            classification_report(
+                df_labels["y_true"].to_numpy(),
+                df_labels["y_pred"].to_numpy(),
+                output_dict=True
+            )
+        )
+        .T
+        .reset_index()
+        .rename({"index": "label"}, axis=1)
+    )
+
+    polars.testing.assert_frame_equal(
+        res.sort("label"),
+        expected.sort("label"),
+        check_dtypes=False
+    )
 
 
+@pytest.mark.parametrize("input_params", [
+    (
+        dict(
+            y_true=np.array(list("ccc b b b aa a".replace(" ", ""))),
+            y_pred=np.array(list("ccc c b a bb a".replace(" ", ""))),
+        )
+    ),
+    (
+        dict(
+            y_true=np.array(
+                list("a"*10 + "a" + "c"*20 + "c"*5 + "b" + "b" + "b"*15)
+            ),
+            y_pred=np.array(
+                list("a"*10 + "b" + "c"*20 + "b"*5 + "a" + "c" + "b"*15)
+            )
+        )
+    )
+])
+def text_confusion_matrix(input_params):
+    y_true = input_params["y_true"]
+    y_pred = input_params["y_pred"]
+    res = reporting.classification_report(y_true, y_pred)
 
+    from sklearn.metrics import classification_report
+    expected = pl.from_pandas(
+        pd.DataFrame(
+            classification_report(y_true, y_pred, output_dict=True)
+        )
+        .T
+        .reset_index()
+        .rename({"index": "label"}, axis=1)
+    )
 
+    polars.testing.assert_frame_equal(
+        res.sort("label"),
+        expected.sort("label")
+    )
 

@@ -210,16 +210,31 @@ def confusion_matrix(
 
 def classification_report_from_confusion_matrix(
     conf_mtx: pl.DataFrame,
+    *,
     order: str = "lexicographic",
     descending: bool = False,
 ) -> pl.DataFrame:
-    labels = conf_mtx.drop("y_true", "_total_").columns
+
+    # Note: the confusion matrix might have 
+    # empty columns, so the labels
+    # are only the y_true values
+    labels = (
+        conf_mtx
+        .select("y_true")
+        .filter(
+            pl.col("y_true") != "_total_"
+        )
+        .to_numpy()
+        .squeeze()
+        .tolist()
+    )
 
     diag_counts = (
         conf_mtx
-            .drop("y_true", "_total_")
-            .to_numpy()
-            [np.diag_indices(len(labels))]
+        .filter(pl.col("y_true") != "_total_")
+        .select(*labels)
+        .to_numpy()
+        [np.diag_indices(len(labels))]
     )
     true_counts = (
         conf_mtx
@@ -230,7 +245,7 @@ def classification_report_from_confusion_matrix(
     pred_counts = (
         conf_mtx
         .filter(pl.col("y_true") == "_total_")
-        .drop("y_true", "_total_")
+        .select(*labels)
         .to_numpy()
         .squeeze()
     )
@@ -304,14 +319,15 @@ def classification_report_from_confusion_matrix(
 def classification_report(
     y_true: NDArray,
     y_pred: NDArray,
-    expected_labels: Iterable[str] = None,
+    *,
+    expected_labels: List[str] | None = None,
     order: str = "lexicographic",
     descending: bool = False,
 ) -> pl.DataFrame:
     conf_mtx = confusion_matrix(
         y_true, 
         y_pred, 
-        expected_labels,
+        expected_labels=expected_labels,
         order=order,
         descending=descending,
         normalize=False,
@@ -385,3 +401,30 @@ def average_confusion_matrix(
     )
 
     return confmtx_avg
+
+
+def y_columns_from_confusion_matrix(conf_mtx: pl.DataFrame) -> pl.DataFrame:
+    df_tmp = (
+        conf_mtx
+        # remove totals
+        .drop("_total_", strict=False)
+        .filter(pl.col("y_true") != "_total_")
+        # disaggregate matrix in row/col pairs
+        .unpivot(index="y_true")
+        # remove pairs without an occurrence count
+        .filter(pl.col("value") > 0)
+        .rename({
+            "variable": "y_pred",
+            "value": "count"
+        })
+    )
+
+    return (
+        df_tmp
+        # form lists repeating each pair value
+        .select(
+            pl.col("y_true", "y_pred")
+            .repeat_by(pl.col("count"))
+        )
+        .explode("y_true", "y_pred")
+    )

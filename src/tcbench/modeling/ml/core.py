@@ -66,14 +66,15 @@ class ClassificationResults:
         self.df_feat = df_feat
         self.split_index = split_index
 
-        if y_true is not None:
+        if self.df_feat is not None:
+            if y_true is not None:
+                self.df_feat = self.df_feat.with_columns(
+                    y_true=pl.Series(y_true),
+                    y_pred=pl.Series(y_pred),
+                )
             self.df_feat = self.df_feat.with_columns(
-                y_true=pl.Series(y_true),
-                y_pred=pl.Series(y_pred),
-            )
-        self.df_feat = self.df_feat.with_columns(
-            split_index=pl.lit(split_index) if split_index else None
-        ) 
+                split_index=pl.lit(split_index) if split_index else None
+            ) 
         self.confusion_matrix = None
         self.confusion_matrix_normalized = None
         self.classification_report = None
@@ -201,7 +202,7 @@ class ClassificationResults:
         df_feat = fileutils.load_if_exists(
             folder / f"{name}_df_feat.parquet", 
             echo=echo,
-            error_policy="raise"
+            error_policy="return"
         )
         confusion_matrix = fileutils.load_if_exists(
             folder / f"{name}_confusion_matrix.csv", 

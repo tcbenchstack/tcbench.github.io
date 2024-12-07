@@ -3,6 +3,8 @@ from tcbench.core import StringEnum
 from tcbench.modeling.columns import (
     COL_PKTS_SIZE,
     COL_PKTS_DIR,
+    COL_PKTS_IAT,
+    COL_PKTS_TCP_WINSIZE,
     COL_PKTS_SIZE_TIMES_DIR,
 )
 
@@ -21,6 +23,8 @@ class MODELING_INPUT_REPR_TYPE(StringEnum):
 class MODELING_FEATURE(StringEnum):
     PKTS_SIZE = COL_PKTS_SIZE
     PKTS_DIR = COL_PKTS_DIR
+    PKTS_IAT = COL_PKTS_IAT
+    PKTS_TCP_WINSIZE = COL_PKTS_TCP_WINSIZE
     PKTS_SIZE_TIMES_DIR = COL_PKTS_SIZE_TIMES_DIR
 
 

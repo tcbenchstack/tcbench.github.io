@@ -127,8 +127,7 @@ def install(ctx, dataset_name:DATASET_NAME, no_download:bool):
 )
 def schema(ctx, dataset_name, dataset_type):
     """Show dataset schema."""
-    dset = tcbench.datasets_catalog()[dataset_name]
-    dset_schema = dset.get_schema(dataset_type)
+    dset_schema = tcbench.get_dataset_schema(dataset_name, dataset_type)
     cli.console.print(dset_schema)
 
 

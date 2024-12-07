@@ -87,7 +87,7 @@ def _load_dataset(
     return dset
         
 
-@save_params("save_to", "split_index", echo=True)
+@save_params("save_to", "split_index", echo=False)
 def _trainer_init(
     dataset_name: DATASET_NAME,
     method_name: MODELING_METHOD_NAME,

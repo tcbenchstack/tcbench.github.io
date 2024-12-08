@@ -12,7 +12,7 @@ from tcbench import fileutils
 TCBENCHRC_PATH = pathlib.Path(os.path.expandvars("$HOME")) / ".tcbenchrc"
 
 
-def _init_tcbenchrc() -> Dict[str, Any]:
+def init_tcbenchrc() -> Dict[str, Any]:
     data=dict(
         datasets=dict(
             install_folder=str(DATASETS_DEFAULT_INSTALL_ROOT_FOLDER)
@@ -33,7 +33,7 @@ class TCBenchRC(UserDict):
     def __init__(self):
         super().__init__()
         if not TCBENCHRC_PATH.exists():
-            _init_tcbenchrc()
+            init_tcbenchrc()
         self.load()
 
     @property

@@ -13,12 +13,14 @@ def config(ctx):
 def _parse_set_option(option_values):
     if len(option_values) != 1 or "=" not in option_values[0]:
         raise click.BadParameter(
-            f"Invalid syntax. Provide a single value using the syntax: config.param.name=value"
+            "Invalid syntax. Provide a single value using the syntax: "
+            "config.param.name=value"
         )
     param_name, param_value = option_values[0].split("=")
     if not tcbench.is_valid_config(param_name, param_value):
         raise click.BadParameter(
-            f"Unrecognized option or wrong value. Provide a single value using the syntax: config.param.name=value"
+            "Unrecognized option or wrong value. Provide a single value "
+            "using the syntax: config.param.name=value"
         )
     return param_name, param_value
 
@@ -38,7 +40,7 @@ def _set(ctx, option):
 @click.pass_context
 def _reset(ctx):
     """Reset all TCBench configurations to default values."""
-    tcbench._init_tcbenchrc()
+    tcbench.init_tcbenchrc()
     console.print("Configuration reset to default!")
 
 @config.command(name="show")

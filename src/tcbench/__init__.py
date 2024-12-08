@@ -1,15 +1,12 @@
 import pathlib
-import sys
 
 from tcbench import fileutils
-from tcbench._rcconfig import TCBenchRC
-
-__version__ = "0.0.22"
-
-
-def get_config():
-    return TCBenchRC()
-
+from tcbench._rcconfig import (
+    TCBENCHRC_PATH,
+    TCBenchRC,
+    is_valid_config,
+    init_tcbenchrc,
+)
 
 from tcbench.datasets import (
     get_datasets_catalog,
@@ -19,6 +16,14 @@ from tcbench.datasets import (
     DATASET_NAME,
     DATASET_TYPE,
 )
+
+__version__ = "0.0.22"
+
+
+def get_config():
+    return TCBenchRC()
+
+
 
 
 ##########################

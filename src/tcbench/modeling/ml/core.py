@@ -309,7 +309,7 @@ class MLDataLoader(Iterator):
         self,
         dset: Dataset,
         features: MODELING_FEATURE | Iterable[MODELING_FEATURE],
-        df_splits: pl.DataFrame | None,
+        df_splits: pl.DataFrame | None = None,
         split_indices: List[int] | None = None,
         y_colname: str = COL_APP,
         index_colname: str = COL_ROW_ID,
@@ -322,7 +322,7 @@ class MLDataLoader(Iterator):
         self.dset = dset
         self.y_colname = y_colname
         self.index_colname = index_colname
-        self.df_splits = df_splits
+        self._df_splits = df_splits
         self.features = [features] if isinstance(features, MODELING_FEATURE) else features
         self.extra_colnames = extra_colnames
         self.series_len = series_len
@@ -331,7 +331,7 @@ class MLDataLoader(Iterator):
         self.seed = seed
 
         if not dset.is_loaded:
-            raise RuntimeError(
+            raise MLDataLoaderException(
                 f"Dataset {dset.name} is not loaded!"
                 " Call the Dataset .load() method before creating a DataLoader()"
             )
@@ -342,14 +342,13 @@ class MLDataLoader(Iterator):
 
         self._df_splits = dset.df_splits if df_splits is None else df_splits
         if self._df_splits is None:
-            raise RuntimeError(
+            raise MLDataLoaderException(
                 f"No data splits found for {dset.name}! "
                 "Either provide them when creating the DataLoader "
                 "or verify that the Dataset was loaded and has data splits"
             )
         elif isinstance(self._df_splits, pl.DataFrame):
             self._df_splits = self._df_splits.lazy()
-
 
         self._labels = self._get_labels(self._df, y_colname)
         self._split_indices = self._get_split_indices(
@@ -380,15 +379,26 @@ class MLDataLoader(Iterator):
         df: pl.LazyFrame,
         split_indices: Iterable[int] | None
     ) -> NDArray:
-        if split_indices is not None:
-            return np.array(split_indices)
-        return (
-            df
+        available_indices = (
+            self._df_splits
             .select(COL_SPLIT_INDEX)
             .collect()
+            .to_series()
             .to_numpy()
-            .squeeze()
+            .tolist()
         )
+        if split_indices is None:
+            return np.array(available_indices)
+
+        split_indices = set(split_indices)
+        found = split_indices.intersection(set(available_indices))
+        missing = split_indices - found
+        if len(missing) > 0:
+            raise MLDataLoaderException(
+                f"Split indices {missing} are invalid! "
+                f"Available values: {available_indices}"
+            )
+        return np.array(split_indices)
 
     @property
     def labels(self) -> List[str]:
@@ -647,7 +657,7 @@ class MLModel:
     def load(cls, path: pathlib.Path, echo: bool = False) -> MLModel:
         path = pathlib.Path(path)
         if path.is_dir():
-            path /= "tcbench_model.pkl"
+            path /= "tcbench_mlmodel.pkl"
         return fileutils.load_pickle(path, echo=echo)
 
     def save(self, save_to: pathlib.Path, echo: bool = False) -> MLModel:

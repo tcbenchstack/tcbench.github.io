@@ -40,6 +40,10 @@ def _convert_data_to_yaml(data: Dict[str, Any]) -> Dict[str, int|float|str|bool]
                 continue
             if isinstance(value, (set, tuple, list)):
                 new_data[key] = list(map(str, value))
+                continue
+            if isinstance(value, dict):
+                new_data[key] = _convert_data_to_yaml(value)
+                continue
             else:
                 new_data[key] = str(value)
     return new_data

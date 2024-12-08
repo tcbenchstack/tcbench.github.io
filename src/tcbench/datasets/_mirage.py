@@ -741,7 +741,7 @@ class BaseMirageDataset(Dataset):
         with richutils.SpinnerProgress(
             description=f"Load {self.name}/raw postprocess..."
         ):
-            df = fileutils.load_parquet(fname, echo=False)
+            df = fileutils.load_parquet(fname, echo=False, lazy=False)
 
         self.df, self.df_stats, self.df_splits = (
             _factory_curate_pipeline(self)

@@ -15,6 +15,7 @@ import shutil
 import polars as pl
 import numpy as np
 
+import tcbench
 from tcbench import fileutils
 from tcbench.cli import richutils
 from tcbench.datasets.core import (
@@ -199,8 +200,9 @@ def _rename_columns(columns: List[str]) -> Dict[str, str]:
 
 
 class ParserRawJSON:
-    def __init__(self, name: DATASET_NAME):
+    def __init__(self, name: DATASET_NAME, num_workers: int = -1):
         self.name = name
+        self.num_workers = tcbench.validate_num_workers(num_workers)
         self.dataset_schema = catalog.get_dataset_schema(
             name, 
             DATASET_TYPE.RAW
@@ -243,7 +245,11 @@ class ParserRawJSON:
                     description="Parse JSON files...", 
                     total=len(files)
                 ) as progress,
-                multiprocessing.get_context("spawn").Pool(processes=2) as pool,
+                (
+                    multiprocessing
+                    .get_context("spawn")
+                    .Pool(processes=self.num_workers)
+                ) as pool,
             ):
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
@@ -710,10 +716,11 @@ class BaseMirageDataset(Dataset):
     def _list_raw_json_files(self):
         return list(self._subfolder_raw_json.rglob("*.json"))
 
-    def raw(self) -> pl.DataFrame:
+    def raw(self, num_workers: int = -1) -> pl.DataFrame:
         return (
             ParserRawJSON(
-                self.name
+                self.name,
+                num_workers,
             )
             .run(
                 self._list_raw_json_files,
@@ -722,7 +729,7 @@ class BaseMirageDataset(Dataset):
             )
         )
 
-    def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
+    def _raw_postprocess(self, num_workers: int = -1) -> Tuple[pl.DataFrame]:
         self.load(DATASET_TYPE.RAW, lazy=False)
         return (
             _factory_raw_postprocessing_pipeline(self)
@@ -731,7 +738,7 @@ class BaseMirageDataset(Dataset):
 
     def curate(
         self, 
-        recompute_intermediate: bool = False
+        recompute_intermediate: bool = False,
     ) -> pl.LazyFrame:
         fname = self.folder_raw / "_postprocess.parquet"
         if not fname.exists() or recompute_intermediate:

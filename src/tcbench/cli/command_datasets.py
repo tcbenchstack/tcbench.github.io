@@ -67,19 +67,27 @@ def info(ctx, dataset_name):
 #    default=None,
 #    help="Folder where to find pre-downloaded tarballs.",
 #)
-#@click.option(
-#    "--num-workers",
-#    "-w",
-#    required=False,
-#    type=int,
-#    default=20,
-#    show_default=True,
-#    help="Number of parallel workers to use when processing the data.",
-#)
-def install(ctx, dataset_name:DATASET_NAME, no_download:bool):
+@click.option(
+    "--num-workers",
+    "-w",
+    "num_workers",
+    required=False,
+    type=int,
+    default=-1,
+    help=(
+        "Number of parallel workers to use when processing the data. "
+        "Default: use all available cores."
+    ),
+)
+def install(
+    ctx, 
+    dataset_name: tcbench.DATASET_NAME, 
+    no_download: bool,
+    num_workers: int,
+):
     """Install a dataset."""
-    catalog = tcbench.get_datasets_catalog()
-    catalog[dataset_name].install(no_download)
+    dset = tcbench.get_dataset(dataset_name)
+    dset.install(no_download, num_workers)
 
 
 #def _ls_files(dataset_name):

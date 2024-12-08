@@ -17,6 +17,10 @@ from tcbench.datasets import (
     DATASET_TYPE,
 )
 
+from tcbench.core import (
+    validate_num_workers
+)
+
 __version__ = "0.0.22"
 
 

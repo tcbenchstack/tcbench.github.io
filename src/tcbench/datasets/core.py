@@ -1,4 +1,5 @@
 from __future__ import annotations
+import multiprocessing
 
 import rich.table as richtable
 import rich.box as richbox
@@ -459,12 +460,12 @@ class Dataset:
     def install(
         self, 
         no_download:bool = False, 
-        #extra_unpack: Iterable[pathlib.Path] = None
+        num_workers: int = -1,
     ) -> pathlib.Path:
         if not no_download:
-            #self._install_raw(extra_unpack)
             self._install_raw()
-        self.raw()
+
+        self.raw(num_workers)
         self.curate()
         return self.install_folder
 
@@ -572,11 +573,11 @@ class Dataset:
         return self.df is not None
 
     @abc.abstractmethod
-    def raw(self) -> Any:
+    def raw(self, *args, **kwargs) -> Any:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def curate(self) -> Any:
+    def curate(self, *args, **kwargs) -> Any:
         raise NotImplementedError()
 
     def __rich__(self) -> richtable.Table:

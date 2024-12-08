@@ -93,3 +93,9 @@ def save_params(
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+def validate_num_workers(num_workers: int = -1) -> int:
+    max_workers = multiprocessing.cpu_count()
+    if num_workers == -1:
+        return max_workers
+    return min(max_workers, num_workers)

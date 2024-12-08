@@ -38,25 +38,6 @@ def _parse_str_to_int(command: str, parameter: str, value: str) -> int:
     return int(value)
 
 
-CHOICE_DATASET_NAME = _create_choice(DATASET_NAME.values())
-parse_dataset_name = functools.partial(
-    _parse_enum_from_str, from_str=DATASET_NAME.from_str
-)
-
-CHOICE_DATASET_TYPE = _create_choice(DATASET_TYPE.values())
-parse_dataset_type = functools.partial(
-    _parse_enum_from_str, from_str=DATASET_TYPE.from_str
-)
-
-CHOICE_MODELING_METHOD_NAME = _create_choice(MODELING_METHOD_NAME.values())
-parse_modeling_method_name = functools.partial(
-    _parse_enum_from_str, from_str=MODELING_METHOD_NAME.from_str
-)
-
-CHOICE_MODELING_FEATURE = _create_choice(MODELING_FEATURE.values())
-parser_modeling_feature = functools.partial(
-    _parse_enum_from_str, from_str=MODELING_FEATURE.from_str
-)
 
 
 
@@ -101,6 +82,21 @@ def parse_raw_text_to_list(
     return tuple(values)
 
 
+def _parse_list_of_enum_from_str(
+    command: str,
+    parameter: str,
+    value: str | None,
+    from_str: Callable,
+) -> List[StringEnum]:
+    opts = parse_raw_text_to_list(command, parameter, value)
+    if opts is None:
+        return []
+    return [
+        from_str(text)
+        for text in opts
+    ]
+
+
 def parse_raw_text_to_list_int(
     command: str, 
     parameter: str, 
@@ -129,6 +125,31 @@ def parse_remainder(
 #CLICK_PARSE_INPUT_REPR = functools.partial(_parse_enum_from_str, enumeration=MODELING_INPUT_REPR_TYPE)
 
 CLICK_PARSE_STRTOINT = _parse_str_to_int
+
+CHOICE_DATASET_NAME = _create_choice(DATASET_NAME.values())
+parse_dataset_name = functools.partial(
+    _parse_enum_from_str, from_str=DATASET_NAME.from_str
+)
+
+CHOICE_DATASET_TYPE = _create_choice(DATASET_TYPE.values())
+parse_dataset_type = functools.partial(
+    _parse_enum_from_str, from_str=DATASET_TYPE.from_str
+)
+
+CHOICE_MODELING_METHOD_NAME = _create_choice(MODELING_METHOD_NAME.values())
+parse_modeling_method_name = functools.partial(
+    _parse_enum_from_str, from_str=MODELING_METHOD_NAME.from_str
+)
+
+CHOICE_MODELING_FEATURE = _create_choice(MODELING_FEATURE.values())
+parse_modeling_feature = functools.partial(
+    _parse_enum_from_str, from_str=MODELING_FEATURE.from_str
+)
+parse_list_modeling_feature = functools.partial(
+    _parse_list_of_enum_from_str, from_str=MODELING_FEATURE.from_str
+)
+
+
 
 
 def save_commandline(

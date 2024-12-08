@@ -99,8 +99,8 @@ def modeling(ctx):
     "-f",
     "features",
     required=True,
-    type=clickutils.CHOICE_MODELING_FEATURE,
-    callback=clickutils.parse_raw_text_to_list,
+    type=list,
+    callback=clickutils.parse_list_modeling_feature,
     help="List of features to use.",
 )
 @click.option(
@@ -196,7 +196,7 @@ def run(
     help="Modeling method.",
     default=None,
 )
-def hyperparam_docs(
+def docs(
     method_name: MODELING_METHOD_NAME,
 ):
     """Shows hyper parameters documentations for modelingn algorithms."""

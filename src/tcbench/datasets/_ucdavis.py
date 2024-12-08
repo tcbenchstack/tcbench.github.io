@@ -7,13 +7,10 @@ import pathlib
 import multiprocessing
 import functools
 
-from collections import OrderedDict
-
 from tcbench import fileutils
 from tcbench.cli import richutils
 from tcbench.datasets.core import (
     Dataset,
-    DatasetSchema,
     BaseDatasetProcessingPipeline,
     SequentialPipelineStage,
     _remove_fields_from_schema,
@@ -81,7 +78,7 @@ class RawTXTParser:
                 description="Parsing raw txt files...", 
                 total=len(paths),
             ) as progress,
-            multiprocessing.Pool(processes=2) as pool,
+            multiprocessing.get_context("spawn").Pool(processes=2) as pool,
         ):
             func = functools.partial(_parse_raw_txt_worker, schema=schema)
             data = []
@@ -370,7 +367,7 @@ class UCDavis19(Dataset):
                 description="Parsing raw txt files...", 
                 total=len(paths),
             ) as progress,
-            multiprocessing.Pool(processes=2) as pool,
+            multiprocessing.get_context("spawn").Pool(processes=2) as pool,
         ):
             schema = self.get_schema(DATASET_TYPE.RAW).to_polars()
             func = functools.partial(_parse_raw_txt_worker, schema=schema)

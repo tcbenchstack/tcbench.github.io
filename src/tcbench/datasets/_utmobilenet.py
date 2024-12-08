@@ -204,7 +204,7 @@ class RawCSVParser:
                     description="Parse CSV files...", 
                     total=len(files)
                 ) as progress,
-                multiprocessing.Pool(processes=2) as pool,
+                multiprocessing.get_context("spawn").Pool(processes=2) as pool,
             ):
                 for _ in pool.imap_unordered(func, files):
                     progress.update()

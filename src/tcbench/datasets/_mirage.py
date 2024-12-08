@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque, OrderedDict
-from typing import Dict, Any, Tuple, Iterable, Callable
+from typing import Dict, Any, Tuple, Iterable
 
 import pathlib
 import json
@@ -9,11 +9,8 @@ import multiprocessing
 import tempfile
 import functools
 import math
-import ipaddress
 import os
 import shutil
-
-from multiprocessing import get_context
 
 import polars as pl
 import numpy as np
@@ -35,7 +32,6 @@ from tcbench.datasets import (
 from tcbench.datasets._constants import (
     DATASETS_RESOURCES_FOLDER,
     APP_LABEL_BACKGROUND,
-    APP_LABEL_ALL,
 )
 
 
@@ -247,7 +243,7 @@ class ParserRawJSON:
                     description="Parse JSON files...", 
                     total=len(files)
                 ) as progress,
-                multiprocessing.Pool(processes=2) as pool,
+                multiprocessing.get_context("spawn").Pool(processes=2) as pool,
             ):
                 for _ in pool.imap_unordered(func, files):
                     progress.update()

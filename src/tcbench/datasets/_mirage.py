@@ -723,7 +723,7 @@ class BaseMirageDataset(Dataset):
         )
 
     def _raw_postprocess(self) -> Tuple[pl.DataFrame]:
-        self.load(DATASET_TYPE.RAW)
+        self.load(DATASET_TYPE.RAW, lazy=False)
         return (
             _factory_raw_postprocessing_pipeline(self)
             .run(self.df)

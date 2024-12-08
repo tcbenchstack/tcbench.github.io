@@ -108,11 +108,18 @@ def load_parquet(
     return pl.scan_parquet(path)
 
 
-def save_parquet(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None:
+def save_parquet(
+    df: pl.DataFrame | pl.LazyFrame, 
+    save_as: pathlib.Path, 
+    echo: bool = True
+) -> None:
     save_as = pathlib.Path(save_as)
     create_folder(save_as.parent, echo=echo)
     cli.logger.log(f"saving: {save_as}", echo=echo)
-    df.write_parquet(save_as)
+    if isinstance(df, pl.DataFrame):
+        df.write_parquet(save_as)
+    else:
+        df.collect().write_parquet(save_as)
 
 
 LOAD_FUNC_BY_SUFFIX = {

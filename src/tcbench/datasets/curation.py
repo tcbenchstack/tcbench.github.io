@@ -32,12 +32,12 @@ def ip_is_valid(text: str) -> bool:
     )
 
 
-def add_ip_columns_validation(
-    df: pl.DataFrame, 
-    colname_src_ip: str = "src_ip", 
-    colname_dst_ip: str = "dst_ip"
-) -> pl.DataFrame:
-    return add_is_private_ip_columns(df, colname_src_ip, colname_dst_ip)
+#def add_ip_columns_validation(
+#    df: pl.DataFrame, 
+#    colname_src_ip: str = "src_ip", 
+#    colname_dst_ip: str = "dst_ip"
+#) -> pl.DataFrame:
+#    return add_is_private_ip_columns(df, colname_src_ip, colname_dst_ip)
 
 
 def add_ip_column_flags(
@@ -48,12 +48,11 @@ def add_ip_column_flags(
     df_flags = (
         pl.concat(
             (
-                df[colname_src_ip].unique().rename("ip_addr"),
-                df[colname_dst_ip].unique().rename("ip_addr"),
+                df.select(colname_src_ip).rename({colname_src_ip: "ip_addr"}),
+                df.select(colname_dst_ip).rename({colname_dst_ip: "ip_addr"}),
             )
         )
         .unique()
-        .to_frame()
         .with_columns(
             is_private=(
                 pl.col("ip_addr")

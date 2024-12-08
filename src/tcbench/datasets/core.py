@@ -256,7 +256,9 @@ class RawDatasetInstaller:
                 # unpack one path
                 path = queue.pop(0)
                 res.append(
-                    self._unpack(path, progress=False, remove_dst=True)
+                    self._unpack(
+                        path, progress=False, remove_dst=len(res) == 0
+                    )
                 )
                 completed.add(path)
                 # check if new archives have been appeared
@@ -269,7 +271,7 @@ class RawDatasetInstaller:
                     queue.extend(list(new_archives))
                     progress.update_total(len(completed) + len(queue))
                 progress.update()
-            return tuple(res)
+        return tuple(res)
 
 
 @dataclasses.dataclass

@@ -75,6 +75,7 @@ class RawTXTParser:
             DATASET_NAME.UCDAVIS19,
             DATASET_TYPE.RAW
         )
+
         with (
             richutils.Progress(
                 description="Parsing raw txt files...", 
@@ -99,7 +100,7 @@ class RawTXTParser:
         return df
 
 
-class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
+class RawPostprocessingPipeline(BaseDatasetProcessingPipeline):
     def __init__(self, save_to: pathlib.Path):
         super().__init__(
             dataset_name=DATASET_NAME.UCDAVIS19,
@@ -125,12 +126,12 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 "Adding columns",
             ),
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 "Computing stats",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                 ),
                 "Writing parquet files",
             )
@@ -177,7 +178,6 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
             first_idx, last_idx = indices[0], indices[-1]
             arr = data["pkts_timestamp"]
             return arr[last_idx] - arr[first_idx]
-
         
         return (
             df
@@ -222,14 +222,14 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                     pl.col("pkts_size_times_dir").list.eval(
                         pl.when(pl.element() > 0)
                         .then(pl.element())
-                        .otherwise(0)
+                        .otherwise(pl.lit(0))
                     ).list.sum()
                 ),
                 bytes_download=(
                     pl.col("pkts_size_times_dir").list.eval(
                         pl.when(pl.element() < 0)
                         .then(-pl.element())
-                        .otherwise(0)
+                        .otherwise(pl.lit(0))
                     ).list.sum()
                 ),
                 duration_upload=(
@@ -295,7 +295,7 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         self.name = "Curate pretrain partition..."
         self.extend((
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 "Compute stats",
             ),
             SequentialPipelineStage(
@@ -303,12 +303,12 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
                 "Remove columns",
             ),
             SequentialPipelineStage(
-                self._compute_splits,
+                self.compute_splits,
                 "Compute splits",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                     fname_prefix=self.dataset_name
                 ),
                 "Write parquet files",
@@ -326,7 +326,7 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
             self.name = f"Curate {suffix} partition..."
             self.extend((
                 SequentialPipelineStage(
-                    self._compute_stats,
+                    self.compute_stats,
                     "Compute stats",
                 ),
                 SequentialPipelineStage(
@@ -335,7 +335,7 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
                 ),
                 SequentialPipelineStage(
                     functools.partial(
-                        self._write_parquet_files,
+                        self.write_parquet_files,
                         fname_prefix=f"{self.dataset_name}_{suffix}"
                     ),
                     "Write parquet files",
@@ -403,7 +403,7 @@ class UCDavis19(Dataset):
   
     def _raw_postprocess(self) -> pl.DataFrame:
         self.load(DATASET_TYPE.RAW)
-        df, *_ = RawPostorocessingPipeline(
+        df, *_ = RawPostprocessingPipeline(
             save_to=self.folder_raw
         ).run(self.df)
         return df

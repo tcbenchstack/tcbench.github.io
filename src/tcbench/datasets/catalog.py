@@ -96,4 +96,4 @@ def get_dataset_polars_schema(
     dataset_name: DATASET_NAME, 
     dataset_type: DATASET_TYPE
 ) -> pl.schema.Schema:
-    return get_dataset_schema(dataset_name, dataset_type)
+    return get_dataset_schema(dataset_name, dataset_type).to_polars()

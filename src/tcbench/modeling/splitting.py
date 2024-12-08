@@ -183,7 +183,13 @@ def add_split_column(
     test_size: float = 0.1,
     seed: int = 1, 
 ) -> pl.DataFrame:
-    df_split_indices = _get_split_indices(df, y_colname, index_colname, test_size, seed)
+    df_split_indices = _get_split_indices(
+        df, 
+        y_colname=y_colname, 
+        index_colname=index_colname, 
+        test_size=test_size, 
+        seed=seed
+    )
     return df.join(
         df_split_indices, 
         on=[y_colname, index_colname]
@@ -199,7 +205,12 @@ def split_monte_carlo(
 ) -> pl.DataFrame:
     return pl.concat([
         _split_indices_to_list(
-            _get_split_indices(df, y_colname, index_colname, test_size=test_size, seed=seed+split_index),
+            _get_split_indices(
+                df, 
+                y_colname=y_colname, 
+                index_colname=index_colname, 
+                test_size=test_size, seed=seed+split_index
+            ),
             split_index=split_index
         )
         for split_index in range(1, num_splits+1)

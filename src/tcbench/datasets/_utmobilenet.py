@@ -288,12 +288,12 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
                 "Adding TCP handshake check",
             ),
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 "Computing stats",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                     fname_prefix="_postprocess"
                 ),
                 "Writing parquet files",
@@ -519,7 +519,8 @@ class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
 
     def _add_ip_columns(self, df: pl.DataFrame) -> pl.DataFrame:
         return (
-            curation.add_ip_columns_validation(df)
+            #curation.add_ip_columns_validation(df)
+            curation.add_ip_column_flags(df)
             .with_columns(
                 client_ip=(
                     pl.when(pl.col("src_ip_is_private"))
@@ -713,16 +714,16 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
                 "Add columns",
             ),
             SequentialPipelineStage(
-                self._compute_stats,
+                self.compute_stats,
                 "Compute stats",
             ),
             SequentialPipelineStage(
-                self._compute_splits,
+                self.compute_splits,
                 "Compute splits",
             ),
             SequentialPipelineStage(
                 functools.partial(
-                    self._write_parquet_files,
+                    self.write_parquet_files,
                     fname_prefix=self.dataset_name
                 ),
                 "Write parquet files",
@@ -808,19 +809,24 @@ class UTMobilenet21(Dataset):
             RawPostorocessingPipeline(
                 save_to=self.folder_raw
             )
-            .run(self.df)
+            .run(
+                self.df.collect() 
+                if isinstance(self.df, pl.LazyFrame) 
+                else self.df
+            )
         )
         return df
 
     def curate(self, recompute: bool = True) -> pl.DataFrame:
-        fname = self.folder_raw / f"_postprocess.parquet"
+        fname = self.folder_raw / "_postprocess.parquet"
         if not fname.exists() or recompute:
-            df = self._raw_postprocess()
-        else:
-            with richutils.SpinnerProgress(
-                description=f"Load {self.name}/raw postprocess..."
-            ):
-                df = fileutils.load_parquet(fname, echo=False)
+            self._raw_postprocess()
+
+        with richutils.SpinnerProgress(
+            description=f"Load {self.name}/raw postprocess..."
+        ):
+            df = fileutils.load_parquet(fname, echo=False, lazy=False)
+
 
         self.df, self.df_stats, self.df_splits = (
             CuratePipeline(

@@ -254,7 +254,6 @@ class ParserRawJSON:
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
             
-            breakpoint()
             with richutils.SpinnerAndCounterProgress(
                 description="Write parquet files...",
                 total=2,

@@ -254,10 +254,9 @@ class ParserRawJSON:
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
             
-            with richutils.SpinnerAndCounterProgress(
+            with richutils.SpinnerProgress(
                 description="Write parquet files...",
-                total=2,
-            ) as progress:
+            ):
                 # Note: the two steps with intermediate file are
                 # clearly less efficient than doing all operations
                 # in one go, but turned out to be the only way
@@ -265,18 +264,13 @@ class ParserRawJSON:
                 # and without using the lazy loading
                 # the code was crashing on a Linux server with 64GB
                 # (even if the loaded DataFrame was 40GB only)
-
-                # recompose individual files into a temporary files
-                fname = tmp_folder / f"{self.name}.parquet"
                 (
                     pl.scan_parquet(folder_parquet)
-                    .sink_parquet(fname)
+                    .sort(sort_by)
+                    .sink_parquet(
+                        tmp_folder / f"{self.name}.parquet"
+                    )
                 )
-                progress.update()
-                # ...and reload the file, apply sort, and save final file
-                df = pl.read_parquet(fname).sort(sort_by)
-                df.write_parquet(save_to / f"{self.name}.parquet")
-                progress.update()
 
         shutil.rmtree(save_to / "__tmp__", ignore_errors=True)
         return df

@@ -11,6 +11,7 @@ import multiprocessing
 import functools
 import tempfile
 import csv
+import shutil
 
 import tcbench
 from tcbench import fileutils
@@ -243,7 +244,7 @@ class RawCSVParser:
         return df
 
 
-class RawPostorocessingPipeline(BaseDatasetProcessingPipeline):
+class RawPostprocessingPipeline(BaseDatasetProcessingPipeline):
     def __init__(self, save_to: pathlib.Path):
         super().__init__(
             dataset_name=DATASET_NAME.UCDAVIS19,
@@ -783,21 +784,34 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         return df
 
 
+class UTMobilenet21Installer(RawDatasetInstaller):
+    def install(self) -> Tuple[pathlib.Path]:
+        self.download_path = self.download().with_suffix(".zip")
+        return self.unpack(self.download_path)
+
+
+
 class UTMobilenet21(Dataset):
     def __init__(self):
-        super().__init__(name=DATASET_NAME.UTMOBILENET21)
-
-    def _install_raw(
-        self, 
-    ) -> pathlib.Path:
-        url = self.metadata.raw_data_url_hidden[0]["UTMobileNet2021.zip"]
-        RawDatasetInstaller(
-            url=url,
-            install_folder=self.install_folder,
-            verify_tls=True,
-            force_reinstall=True,
+        super().__init__(
+            name=DATASET_NAME.UTMOBILENET21,
+            class_installer=UTMobilenet21Installer
         )
-        return self.install_folder
+
+    # def _install_raw(
+    #     self, 
+    # ) -> pathlib.Path:
+    #     url = self.metadata.raw_data_url_hidden[0]["UTMobileNet2021.zip"]
+    #     RawDatasetInstaller(
+    #         url=url,
+    #         install_folder=self.install_folder,
+    #         verify_tls=True,
+    #         force_reinstall=True,
+    #     )
+    #     src = self.install_folder / "download" / pathlib.Path(url).name
+    #     dst = self.install_folder / "download" / "UTMobileNet2021.zip"
+    #     shutil.move(src, dst)
+    #     return self.install_folder
 
     @property
     def _list_raw_csv_files(self) -> Tuple[pathlib.Path]:
@@ -812,7 +826,7 @@ class UTMobilenet21(Dataset):
     def _raw_postprocess(self) -> pl.DataFrame:
         _ = self.load(DATASET_TYPE.RAW)
         df, *_ = (
-            RawPostorocessingPipeline(
+            RawPostprocessingPipeline(
                 save_to=self.folder_raw
             )
             .run(

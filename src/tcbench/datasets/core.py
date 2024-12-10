@@ -6,7 +6,7 @@ import rich.box as richbox
 
 import polars as pl
 
-from typing import Dict, Any, Iterable, List, Tuple
+from typing import Dict, Any, Iterable, List, Tuple, Callable
 from collections import UserDict, UserList, OrderedDict
 
 import abc
@@ -217,9 +217,6 @@ class DatasetMetadata:
         options: rich.console.ConsoleOptions,
     ) -> rich.console.RenderResult:
         yield self.__rich__()
-
-
-
 
 
 class RawDatasetInstaller:
@@ -451,7 +448,14 @@ class DatasetSchema:
 
 
 class Dataset:
-    def __init__(self, name: DATASET_NAME):
+    def __init__(
+        self, 
+        name: DATASET_NAME,
+        class_installer: Callable = RawDatasetInstaller
+    ):
+        self.name = name
+        self.class_installer = class_installer
+
         dataset_data = (
             fileutils.load_yaml(
                 _constants.DATASETS_RESOURCES_METADATA_FNAME, 
@@ -467,7 +471,6 @@ class Dataset:
                 raw_data_md5.update(item)
             dataset_data["raw_data_md5"] = raw_data_md5
         dataset_data["name"] = name
-        self.name = name
         self.metadata = DatasetMetadata(**dataset_data)
         self.install_folder = tcbench.get_config().install_folder / str(self.name)
         self.y_colname = "app"
@@ -519,7 +522,7 @@ class Dataset:
         self, 
         #extra_unpack: Iterable[pathlib.Path]=None
     ) -> pathlib.Path:
-        RawDatasetInstaller(
+        self.class_installer(
             url=self.metadata.raw_data_url,
             install_folder=self.install_folder,
             verify_tls=True,

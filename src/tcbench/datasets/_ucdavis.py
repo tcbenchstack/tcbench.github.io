@@ -64,8 +64,9 @@ def load_raw_txt(
 
 
 class RawTXTParser:
-    def __init__(self, save_to: pathlib.Path):
+    def __init__(self, save_to: pathlib.Path, num_workers: int = 1):
         self.save_to = save_to
+        self.num_workers = num_workers
 
     def run(self, *paths: Pathlib.Path) -> pl.DataFrame:
         schema = catalog.get_dataset_polars_schema(
@@ -377,7 +378,7 @@ class UCDavis19(Dataset):
                 progress.update()
             return pl.concat(data)
 
-    def raw(self) -> pl.DataFrame:
+    def raw(self, num_workers: int = 1) -> pl.DataFrame:
         self.df = None
         self.df_stats = None
         self.df_splits = None
@@ -387,7 +388,7 @@ class UCDavis19(Dataset):
         self.df_script_stats = None
 
         self.df = (
-            RawTXTParser(self.folder_raw)
+            RawTXTParser(self.folder_raw, num_workers)
             .run(*self._list_raw_txt_files)
         )
         with richutils.SpinnerProgress(description="Writing parquet files..."):

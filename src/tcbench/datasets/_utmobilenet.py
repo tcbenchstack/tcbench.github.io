@@ -777,6 +777,7 @@ class CuratePipeline(BaseDatasetProcessingPipeline):
         )
         return df
 
+
 class UTMobilenet21(Dataset):
     def __init__(self):
         super().__init__(name=DATASET_NAME.UTMOBILENET21)
@@ -785,7 +786,7 @@ class UTMobilenet21(Dataset):
         self, 
     ) -> pathlib.Path:
         url = self.metadata.raw_data_url_hidden[0]["UTMobileNet2021.zip"]
-        UTMobilenet21DatasetInstaller(
+        RawDatasetInstaller(
             url=url,
             install_folder=self.install_folder,
             verify_tls=True,

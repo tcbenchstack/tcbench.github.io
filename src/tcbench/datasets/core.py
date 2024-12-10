@@ -629,8 +629,8 @@ class Dataset:
     def curate(self, *args, **kwargs) -> Any:
         raise NotImplementedError()
 
-    def __rich__(self) -> richtable.Table:
-        return self.metadata.__rich__()
+    def __rich__(self, verbose: bool = False) -> richtable.Table:
+        return self.metadata.__rich__(verbose)
 
     def __rich_console__(self,
         console: rich.console.Console,

@@ -254,9 +254,10 @@ class ParserRawJSON:
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
             
-            with richutils.SpinnerProgress(
+            with richutils.SpinnerAndCounterProgress(
                 description="Write parquet files...",
-            ):
+                total=1,
+            ) as progress:
                 # Note: the two steps with intermediate file are
                 # clearly less efficient than doing all operations
                 # in one go, but turned out to be the only way
@@ -267,10 +268,9 @@ class ParserRawJSON:
                 (
                     pl.scan_parquet(folder_parquet)
                     .sort(sort_by)
-                    .sink_parquet(
-                        tmp_folder / f"{self.name}.parquet"
-                    )
+                    .sink_parquet(save_to / f"{self.name}.parquet")
                 )
+                df = pl.read_parquet(save_to / f"{self.name}.parquet")
 
         shutil.rmtree(save_to / "__tmp__", ignore_errors=True)
         return df

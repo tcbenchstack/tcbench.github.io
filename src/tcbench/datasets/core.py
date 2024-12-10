@@ -126,8 +126,8 @@ class DatasetMetadata:
             "Raw data size:", 
             self.raw_data_size,
         )
-        text = "Raw" + "(Y)" if self.is_raw else "(N)"
-        text += " Curate" + "(Y)" if self.is_curated else "(N)"
+        text = "Raw" + ("(Y)" if self.is_raw else "(N)")
+        text += " Curate" + ("(Y)" if self.is_curated else "(N)")
         table.add_row("Installed:", text)
 
         return table
@@ -199,8 +199,8 @@ class DatasetMetadata:
             table.add_section()
         ###
 
-        text = "Raw" + "(Y)" if self.is_raw else "(N)"
-        text += " Curate" + "(Y)" if self.is_curated else "(N)"
+        text = "Raw" + ("(Y)" if self.is_raw else "(N)")
+        text += " Curate" + ("(Y)" if self.is_curated else "(N)")
         table.add_row("Installed:", text)
         table.add_row("Install dir:", str(self.folder_dset))
 

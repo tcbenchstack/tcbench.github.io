@@ -105,66 +105,112 @@ class DatasetMetadata:
     def get_schema(self, dataset_type: DATASET_TYPE) -> DatasetSchema:
         return self._schemas.get(str(dataset_type), None)
 
-    def __rich__(self) -> richtable.Table:
-        table = richtable.Table(show_header=False, box=richbox.SIMPLE_HEAD, show_footer=False, pad_edge=False)
+    def __rich_minimal__(self) -> richtable.Table:
+        table = richtable.Table(
+            show_header=False, 
+            box=richbox.SIMPLE_HEAD, 
+            show_footer=False, 
+            pad_edge=False,
+            padding=(0, 0),
+            show_edge=False,
+        )
         table.add_column("property")
         table.add_column("value", overflow="fold")
 
-        table.add_row(":a: Description:", self.desc)
-        table.add_row(":triangular_flag: Num. classes:", str(self.num_classes))
+        table.add_row("Description:", f"({self.num_classes} classes) - {self.desc}")
         table.add_row(
-            ":link: Paper URL:", 
+            "Website:", 
+            f"[link={self.url_website}]{self.url_website}[/link]",
+        )
+        table.add_row(
+            "Raw data size:", 
+            self.raw_data_size,
+        )
+        text = "Raw" + "(Y)" if self.is_raw else "(N)"
+        text += " Curate" + "(Y)" if self.is_curated else "(N)"
+        table.add_row("Installed:", text)
+
+        return table
+
+    def __rich_verbose__(self):
+        table = richtable.Table(
+            show_header=False, 
+            box=richbox.SIMPLE_HEAD, 
+            show_footer=False, 
+            pad_edge=False,
+            padding=(0, 0),
+            show_edge=False,
+        )
+        table.add_column("property")
+        table.add_column("value", overflow="fold")
+
+        table.add_row("Description:", f"({self.num_classes} classes) - {self.desc}")
+        table.add_row(
+            "Paper:", 
             f"[link={self.url_paper}]{self.url_paper}[/link]"
         )
         table.add_row(
-            ":link: Website:", 
+            "Website:", 
             f"[link={self.url_website}]{self.url_website}[/link]",
         )
-        table.add_section()
         ###
         table.add_row(
-            ":triangular_ruler: Raw data size:", 
-            self.raw_data_size,
-        )
-        table.add_row(
-            ":link: Raw data URL:", 
+            "Raw data URL:", 
             f"[link={self.raw_data_url}]{self.raw_data_url}[/link]"
         )
         if len(self.raw_data_md5) == 1:
             table.add_row(
-                ":heavy_plus_sign: Raw data MD5:", 
+                "Raw data MD5:", 
                 list(self.raw_data_md5.values())[0]
             )
         else:
-            table.add_row(
-                ":heavy_plus_sign: Raw data MD5:", 
-                "\n".join(
-                    f"{name}: {md5}"
-                    for name, md5 in self.raw_data_md5.items()
-                )
+            subtable = richtable.Table(
+                show_header=False, 
+                box=richbox.SIMPLE_HEAD, 
+                show_footer=False, 
+                pad_edge=False,
+                padding=(0, 0),
+                show_edge=False,
             )
-        table.add_section()
+            subtable.add_column("name")
+            subtable.add_column("md5")
+            for name, md5 in self.raw_data_md5.items():
+                subtable.add_row(name, md5)
+            table.add_row(
+                "Raw data MD5:", 
+                subtable
+            )
+        table.add_row(
+            "Raw data size:", 
+            self.raw_data_size,
+        )
         ####
         if self.curated_data_url:
             table.add_row(
-                ":link: Curated data URL:", 
+                "Curated data URL:", 
                 f"[link={self.curated_data_url}]{self.curated_data_url}[/link]"
                 if self.curated_data_url else
                 ""
             )
             table.add_row(
-                ":heavy_plus_sign: Curated data MD5:", 
+                "Curated data MD5:", 
                 self.curated_data_md5,
             )
             table.add_section()
         ###
-        table.add_row(":file_folder: Root folder:", str(self.folder_dset))
 
-        text = (":heavy_check_mark:" if self.is_raw else ":cross_mark:") + "Raw "
-        text += (":heavy_check_mark:" if self.is_curated else ":cross_mark:") + "Curate"
-        table.add_row(":arrow_down: Installed:", text)
+        text = "Raw" + "(Y)" if self.is_raw else "(N)"
+        text += " Curate" + "(Y)" if self.is_curated else "(N)"
+        table.add_row("Installed:", text)
+        table.add_row("Install dir:", str(self.folder_dset))
 
         return table
+
+    def __rich__(self, verbose: bool = False) -> richtable.Table:
+        func = self.__rich_minimal__
+        if verbose:
+            func = self.__rich_verbose__
+        return func()
 
     def __rich_console__(self,
         console: rich.console.Console,

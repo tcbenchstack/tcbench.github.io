@@ -29,13 +29,22 @@ def datasets(ctx):
     help="Dataset name.",
     default=None,
 )
-def info(ctx, dataset_name):
+@click.option(
+    "--verbose",
+    "-v",
+    "verbose",
+    required=False,
+    is_flag=True,
+    default=False,
+    help="Show verbose."
+)
+def info(ctx, dataset_name, verbose):
     """Show the meta-data related to supported datasets."""
     catalog = tcbench.get_datasets_catalog()
     if dataset_name is not None:
-        cli.logger.log(catalog[dataset_name])
+        cli.logger.log(catalog[dataset_name].__rich__(verbose))
     else:
-        cli.logger.log(catalog)
+        cli.logger.log(catalog.__rich__(verbose))
 
 
 @datasets.command(name="install")

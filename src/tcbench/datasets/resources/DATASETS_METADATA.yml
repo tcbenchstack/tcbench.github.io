@@ -21,7 +21,7 @@ mirage19:
     raw_data_size: "1.4GB (4.7GB uncompressed)"
 
 mirage20:
-    desc: Android mobile apps (cloudVR, short video, VoD, video chat)
+    desc: Android mobile apps (cloudVR, short video, VoD, video chat).
     num_classes: 14
     url_paper: https://www.sciencedirect.com/science/article/pii/S1389128621004564
     url_website: https://traffic.comics.unina.it/mirage/mirage-video.html
@@ -31,7 +31,7 @@ mirage20:
     raw_data_size: "2.0GB (8.0GB uncompressed)"
 
 mirage22:
-    desc: Android mobile apps (video conferencing)
+    desc: Android mobile apps (video conferencing).
     num_classes: 9
     url_paper: "http://wpage.unina.it/antonio.montieri/pubs/_C__IEEE_CAMAD_2021___Traffic_Classification_Covid_app.pdf"
     url_website: "https://traffic.comics.unina.it/mirage/mirage-covid-ccma-2022.html"
@@ -41,9 +41,9 @@ mirage22:
     raw_data_size: "3.1GB (22GB uncompressed)"
 
 mirage24:
-    desc:  ""
-    num_classes: ""
-    url_paper:  ""
+    desc:  Android mobile apps (Chat, Audio-call, Online Gaming Video-call, Video-streaming).
+    num_classes: 20
+    url_paper:  http://wpage.unina.it/antonio.montieri/pubs/guarino2024mirage.pdf
     url_website: https://traffic.comics.unina.it/mirage/mirage-2024.html
     raw_data_url: https://traffic.comics.unina.it/mirage/MIRAGE/MIRAGE-AppAct-2024.zip
     raw_data_md5:

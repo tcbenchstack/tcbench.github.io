@@ -49,28 +49,27 @@ class DatasetsCatalog(UserDict):
     def __setitem__(self, key: Any, value: Any) -> None:
         raise ValueError(f"{self.__class__.__name__} is immutable")
 
-    def __rich__(self) -> richtree.Tree:
+    def __rich__(self, verbose: bool = False) -> richtree.Tree:
         tree = richtree.Tree("Datasets")
         for dset_name in sorted(self.keys()):
-            dset_metadata = self[dset_name]    
+            dset_metadata = self[dset_name].metadata
             table = richtable.Table(
                 show_header=False, 
                 box=None,
                 show_footer=False, 
                 pad_edge=False,
                 expand=True,
+                show_edge=False,
+                padding=(0,0),
             )
             table.add_column("")
-            table.add_row(f"[bold]{dset_name}[/bold]")
             table.add_row(
-                richpanel.Panel(
-                    dset_metadata.__rich__(),
-                    box=richbox.ROUNDED,
-                    expand=True,
-                )
+                dset_metadata.__rich__(verbose),
             )
-            table.add_row("")
-            tree.add(table)
+            table.add_row("", "")
+            subnode = richtree.Tree(f"[bold]{dset_name}[/bold]")
+            subnode.add(table)
+            tree.add(subnode)
         return tree
 
     def __rich_console__(self,

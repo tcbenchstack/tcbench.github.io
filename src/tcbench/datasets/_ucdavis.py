@@ -7,6 +7,7 @@ import pathlib
 import multiprocessing
 import functools
 
+import tcbench
 from tcbench import fileutils
 from tcbench.cli import richutils
 from tcbench.datasets.core import (
@@ -66,7 +67,7 @@ def load_raw_txt(
 class RawTXTParser:
     def __init__(self, save_to: pathlib.Path, num_workers: int = 1):
         self.save_to = save_to
-        self.num_workers = num_workers
+        self.num_workers = tcbench.validate_num_workers(num_workers)
 
     def run(self, *paths: Pathlib.Path) -> pl.DataFrame:
         schema = catalog.get_dataset_polars_schema(

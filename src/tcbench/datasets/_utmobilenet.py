@@ -9,10 +9,10 @@ import numpy as np
 import pathlib
 import multiprocessing
 import functools
-import shutil
 import tempfile
 import csv
 
+import tcbench
 from tcbench import fileutils
 from tcbench.cli import richutils
 from tcbench.datasets.core import (
@@ -182,7 +182,7 @@ def load_raw_csv(path: pathlib.Path) -> pl.DataFrame:
 
 class RawCSVParser:
     def __init__(self, num_workers: int = 1):
-        self.num_workers = num_workers
+        self.num_workers = tcbench.validate_num_workers(num_workers)
         self.name = DATASET_NAME.UTMOBILENET21
         self.dataset_schema = catalog.get_dataset_schema(
             DATASET_NAME.UTMOBILENET21,

@@ -79,7 +79,11 @@ class RawTXTParser:
                 description="Parsing raw txt files...", 
                 total=len(paths),
             ) as progress,
-            multiprocessing.get_context("spawn").Pool(processes=2) as pool,
+            (
+                multiprocessing
+                .get_context("spawn")
+                .Pool(processes=self.num_workers) 
+            ) as pool,
         ):
             func = functools.partial(_parse_raw_txt_worker, schema=schema)
             data = []

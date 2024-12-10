@@ -181,7 +181,8 @@ def load_raw_csv(path: pathlib.Path) -> pl.DataFrame:
 
 
 class RawCSVParser:
-    def __init__(self):
+    def __init__(self, num_workers: int = 1):
+        self.num_workers = num_workers
         self.name = DATASET_NAME.UTMOBILENET21
         self.dataset_schema = catalog.get_dataset_schema(
             DATASET_NAME.UTMOBILENET21,
@@ -204,7 +205,11 @@ class RawCSVParser:
                     description="Parse CSV files...", 
                     total=len(files)
                 ) as progress,
-                multiprocessing.get_context("spawn").Pool(processes=2) as pool,
+                (
+                    multiprocessing
+                    .get_context("spawn")
+                    .Pool(processes=self.num_workers)
+                ) as pool,
             ):
                 for _ in pool.imap_unordered(func, files):
                     progress.update()
@@ -798,8 +803,8 @@ class UTMobilenet21(Dataset):
     def _list_raw_csv_files(self) -> Tuple[pathlib.Path]:
         return tuple(self.folder_raw.rglob("*.csv"))
 
-    def raw(self) -> pl.DataFrame:
-        return RawCSVParser().run(
+    def raw(self, num_workers: int = 1) -> pl.DataFrame:
+        return RawCSVParser(num_workers).run(
             *self._list_raw_csv_files,
             save_to=self.folder_raw
         )

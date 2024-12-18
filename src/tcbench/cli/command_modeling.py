@@ -31,39 +31,54 @@ def modeling(ctx):
     "--dset-name",
     "-d",
     "dataset_name",
-    required=False,
+    metavar="DATASET_NAME",
+    required=True,
     type=clickutils.CHOICE_DATASET_NAME,
     callback=clickutils.parse_dataset_name,
-    help="Dataset name.",
+    help=clickutils.format_help_message(
+        "Dataset name.",
+        clickutils.CHOICE_DATASET_NAME.choices,
+    ),
     default=None,
 )
 @click.option(
     "--dset-type",
     "-t",
     "dataset_type",
+    metavar="DATASET_TYPE",
     required=False,
     type=clickutils.CHOICE_DATASET_TYPE,
     callback=clickutils.parse_dataset_type,
-    help="Dataset type.",
-    # default=click.Choice(DATASET_TYPE.CURATE),
+    default=str(DATASET_TYPE.CURATE),
+    help=clickutils.format_help_message(
+        "Dataset type.",
+        clickutils.CHOICE_DATASET_TYPE.choices,
+        default=str(DATASET_TYPE.CURATE)
+    ),
 )
 @click.option(
     "--method",
     "-m",
     "method_name",
+    metavar="METHOD_NAME",
     required=True,
     type=clickutils.CHOICE_MODELING_METHOD_NAME,
     callback=clickutils.parse_modeling_method_name,
-    help="Modeling method.",
-    default=None,
+    help=clickutils.format_help_message(
+        "Modeling method.",
+        choices=clickutils.CHOICE_MODELING_METHOD_NAME.choices,
+    )
 )
 @click.option(
     "--series-len",
     "-s",
     "series_len",
-    required=True,
+    required=False,
     type=int,
-    help="Clip packet series to the specified length.",
+    help=clickutils.format_help_message(
+        "Clip packet series to the specified length.",
+        default=str(10),
+    ),
     default=10,
 )
 @click.option(
@@ -73,7 +88,10 @@ def modeling(ctx):
     required=False,
     default=pathlib.Path("./model"),
     type=pathlib.Path,
-    help="Output folder.",
+    help=clickutils.format_help_message(
+        "Output folder.",
+        default="./model"
+    ),
 )
 @click.option(
     "--workers",
@@ -82,7 +100,10 @@ def modeling(ctx):
     required=False,
     default=1,
     type=int,
-    help="Number of parallel workers.",
+    help=clickutils.format_help_message(
+        "Number of parallel workers.",
+        default=str(1),
+    )
 )
 @click.option(
     "--split-indices",
@@ -92,7 +113,10 @@ def modeling(ctx):
     default="",
     type=tuple,
     callback=clickutils.parse_raw_text_to_list_int,
-    help="List of splits to use.",
+    help=clickutils.format_help_message(
+        "List of splits to use.",
+        default="Use all predefined splits"
+    )
 )
 @click.option(
     "--features",
@@ -101,10 +125,13 @@ def modeling(ctx):
     required=True,
     type=list,
     callback=clickutils.parse_list_modeling_feature,
-    help="List of features to use.",
+    help=clickutils.format_help_message(
+        "List of features to use.",
+        choices=clickutils.CHOICE_MODELING_FEATURE.choices,
+    ),
 )
 @click.option(
-    "--track-train",
+    "--save-train",
     "-t",
     "track_train",
     required=False,
@@ -119,7 +146,10 @@ def modeling(ctx):
     required=False,
     type=str,
     default="",
-    help="Name of the run.",
+    help=clickutils.format_help_message(
+        "Name of the run.",
+        default="No name is associated to the run"
+    )
 )
 @click.option(
     "--seed",
@@ -128,8 +158,11 @@ def modeling(ctx):
     required=False,
     type=int,
     default=1,
-    help="Seed for dataprep and model initialization. "
-    "The value specified is summmed to the split index.",
+    help=clickutils.format_help_message(
+        "Seed for dataprep and model initialization. "
+        "The value specified is summmed to the split index.",
+        default=str(1)
+    )
 )
 @click.option(
     "--dry-run",

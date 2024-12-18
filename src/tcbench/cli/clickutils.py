@@ -38,9 +38,6 @@ def _parse_str_to_int(command: str, parameter: str, value: str) -> int:
     return int(value)
 
 
-
-
-
 def _parse_range(text: str) -> List[Any]:
     parts = list(map(float, text.split(":")))
     if len(parts) == 1:
@@ -182,41 +179,48 @@ def save_commandline(
     return _decorator
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def compose_help_string_from_list(message: str, items: Sequence[str]) -> str:
+def format_help_message(
+    message: str, 
+    choices: Sequence[str] | None = None, 
+    default: str = None
+) -> str:
     """Compose a string from a list"""
     message = message.strip()
     if message[-1] != ".":
         message += "."
-    return f"""{message}\nValues: [{"|".join(items)}]."""
+    if default is not None:
+        message += f" (default: {default})."
+    if choices is not None:
+        message += f""" Choices: [{" | ".join(choices)}]."""
+    return message
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def convert_params_dict_to_list(params:Dict[str,Any], skip_params:List[str]=None) -> List[str]:

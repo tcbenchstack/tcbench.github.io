@@ -67,7 +67,7 @@ def load_pickle(path: pathlib.Path, echo: bool = True) -> Any:
 
 def save_pickle(data: Any, save_as: pathlib.Path, echo: bool = True) -> Any:
     save_as = pathlib.Path(save_as)
-    create_folder(save_as.parent)
+    create_folder(save_as.parent, echo)
     cli.logger.log(f"saving: {save_as}", echo=echo)
     with open(save_as, "wb") as fout:
         pickle.dump(data, fout)
@@ -82,7 +82,7 @@ def load_yaml(path: pathlib.Path, echo: bool = True) -> Dict[Any, Any]:
 
 def save_yaml(data: Any, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)
-    create_folder(save_as.parent)
+    create_folder(save_as.parent, echo)
     cli.logger.log(f"saving: {save_as}", echo=echo)
     with open(save_as, "w") as fout:
         yaml.dump(_convert_data_to_yaml(data), fout, sort_keys=False)
@@ -95,7 +95,7 @@ def load_csv(path: pathlib.Path, echo: bool = True) -> pl.DataFrame:
 
 def save_csv(df: pl.DataFrame, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)
-    create_folder(save_as.parent)
+    create_folder(save_as.parent, echo)
     cli.logger.log(f"saving: {save_as}", echo=echo)
     df.write_csv(save_as)
 
@@ -118,7 +118,7 @@ def save_parquet(
     echo: bool = True
 ) -> None:
     save_as = pathlib.Path(save_as)
-    create_folder(save_as.parent, echo=echo)
+    create_folder(save_as.parent, echo)
     cli.logger.log(f"saving: {save_as}", echo=echo)
     if isinstance(df, pl.DataFrame):
         df.write_parquet(save_as)
@@ -149,7 +149,7 @@ def load_if_exists(path: pathlib.Path, echo: bool = True, error_policy: str = "r
 
 def save_txt(text: str, save_as: pathlib.Path, echo: bool = True) -> None:
     save_as = pathlib.Path(save_as)
-    create_folder(save_as.parent)
+    create_folder(save_as.parent, echo)
     if text[-1] != "\n":
         text += "\n"
     cli.logger.log(f"saving: {save_as}", echo=echo)

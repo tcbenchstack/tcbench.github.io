@@ -105,7 +105,6 @@ def _trainer_init(
     name: str = "",
     num_workers: int = 1,
 ) -> Any:
-
     dset = _load_dataset(
         dataset_name=dataset_name,
         features=features,
@@ -114,6 +113,7 @@ def _trainer_init(
         index_colname=index_colname,
         extra_colnames=extra_colnames
     )
+
 
     dataloader = MLDataLoader(
         dset,
@@ -153,7 +153,7 @@ def _trainer_init(
         hyperparams=hyperparams,
     )
 
-    return MLTrainer(
+    trainer = MLTrainer(
         model,
         dataloader,
         split_index,
@@ -162,6 +162,8 @@ def _trainer_init(
         evaluate_train=track_train,
         evaluate_test=True
     )
+
+    return trainer
 
 
 def _trainer_loop_worker(
@@ -173,6 +175,7 @@ def _trainer_loop_worker(
 def _trainer_loop(
     trainers: List[MLTrainer],
     *,
+    save_to: pathlib.Path | None = None,
     num_workers: int = 1,
     with_progress: bool = True,
     track_train: bool = True,
@@ -192,6 +195,14 @@ def _trainer_loop(
     ]
     if not track_train:
         table_columns.pop(1)
+
+    # create a console logger to save per-split log files
+    if save_to is not None:
+        cli.logger.register_new_file(
+            save_to / "log.txt",
+            shortname="_grid_output_",
+            with_log_time=False,
+        )
 
     with (
         richutils.ProgressLiveTable(
@@ -216,6 +227,16 @@ def _trainer_loop(
             if clsres_train is not None:
                 row["f1_train"] = clsres_train.weighted_f1
             progress.add_row(**row)
+            if save_to is not None:
+                cli.logger.log(
+                    f"split_index: {clsres_test.split_index} "
+                    f"f1_test: {clsres_test.weighted_f1}",
+                    echo=False,
+                    file_shortname="_grid_output_"
+                )
+
+    if save_to is not None:
+        cli.logger.unregister_file("_grid_output_")
 
 def print_hyperparams_grid(hyperparams_grid: Dict[str, Any] | None) -> None:
     from tcbench.cli.richutils import console
@@ -275,6 +296,8 @@ def train_loop(
     name: str = "",
 ) -> Any:
 
+    if hyperparams_grid is None:
+        hyperparams_grid = dict()
     if len(hyperparams_grid) > 0:
         print_hyperparams_grid(hyperparams_grid)
 
@@ -288,26 +311,31 @@ def train_loop(
             extra_colnames=extra_colnames,
             echo=False
         )
-        split_indices = (
+        if dset.df_splits is None:
+            raise RuntimeError(
+                f"no predefined splits found for dataset {dataset_name}"
+            )
+        split_indices: List[int] = (
             dset
             .df_splits
+            .lazy()
             .select(COL_SPLIT_INDEX)
             .collect()
             .to_numpy()
             .squeeze()
             .tolist()
-        )          
+        )
 
     _flat_grid = _flatten_hyperparams_grid(hyperparams_grid)
     for idx, hyperparams in enumerate(_flat_grid, start=1):
         trainers = []
+        subfolder = save_to
+        if save_to is not None:
+            subfolder = save_to / f"grid_{idx:03d}"
         with richutils.Progress(
             total=len(split_indices),
             description="Prepare trainers..."
         ) as progress:
-            subfolder = save_to
-            if save_to is not None:
-                subfolder = save_to / f"grid_{idx:03d}"
             for split_index in split_indices:
                 trainer = _trainer_init(
                     dataset_name=dataset_name,
@@ -328,9 +356,10 @@ def train_loop(
                 trainers.append(trainer)
                 progress.update()
 
-        cli.logger.log(f"Grid ({idx}/{len(_flat_grid)}): {hyperparams}")
+        cli.logger.log(f"Grid ({idx}/{len(_flat_grid)}) | Hyperparams: {hyperparams}")
         _trainer_loop(
             trainers,
+            save_to = subfolder,
             num_workers=num_workers,
             with_progress=with_progress,
             track_train=track_train

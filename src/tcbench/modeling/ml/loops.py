@@ -6,6 +6,7 @@ import itertools
 import pathlib
 import multiprocessing
 import time
+import copy
 
 from typing import Iterable, Any, Dict, Tuple, List
 from datetime import timedelta
@@ -116,7 +117,6 @@ def _trainer_init(
         extra_colnames=extra_colnames
     )
 
-
     dataloader = MLDataLoader(
         dset,
         features=features,
@@ -152,7 +152,7 @@ def _trainer_init(
             if num_workers == 1 else 
             int(np.ceil(max_workers / num_workers))
         ),
-        hyperparams=hyperparams,
+        hyperparams=copy.deepcopy(hyperparams),
     )
 
     trainer = MLTrainer(

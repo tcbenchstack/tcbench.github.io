@@ -11,8 +11,10 @@ from tcbench.modeling.ml import (
     core as mlcore
 )
 
+
 MODEL_NAME_TO_CLASS = {
-    MODELING_METHOD_NAME.XGBOOST: mlclassifiers.XGBoostClassifier
+    MODELING_METHOD_NAME.XGBOOST: mlclassifiers.XGBoostClassifier,
+    MODELING_METHOD_NAME.RANDOM_FOREST: mlclassifiers.RandomForest
 }
 
 
@@ -26,14 +28,12 @@ def mlmodel_factory(
     hyperparams: Dict[str, Any] | None = None
 ) -> mlcore.MLModel:
     cls = MODEL_NAME_TO_CLASS.get(name, None)
-    if hyperparams is None:
-        hyperparams = dict()
-    if cls:
-        return cls(
-            labels=labels,
-            features=features,
-            seed=seed,
-            num_workers=num_workers,
-            hyperparams=hyperparams,
-        )
-    raise RuntimeError(f"ModelNotFound: unrecognized model name {name}")
+    if cls is None:
+        raise RuntimeError(f"ModelNotFound: unrecognized model name {name}")
+    return cls(
+        labels=labels,
+        features=features,
+        seed=seed,
+        num_workers=num_workers,
+        hyperparams=hyperparams,
+    )

@@ -30,3 +30,4 @@ class MODELING_FEATURE(StringEnum):
 
 class MODELING_METHOD_NAME(StringEnum):
     XGBOOST = "ml.xgboost"
+    RANDOM_FOREST = "ml.randomforest"

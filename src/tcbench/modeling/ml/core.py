@@ -560,17 +560,22 @@ class MLDataLoader(Iterator):
 class MLModel:
     def __init__(
         self,
+        model_class: Callable,
         labels: Iterable[str],
         features: Iterable[MODELING_FEATURE],
-        model_class: Callable,
-        seed: int = 1,
         *,
-        hyperparams: Dict[str, Any],
+        seed: int = 1,
+        num_workers: int | None = None,
+        hyperparams: Dict[str, Any] | None = None,
     ):
         self.labels = labels
         self.features = features
         self.hyperparams = hyperparams
         self.seed = seed
+        self.num_workers = num_workers
+
+        if hyperparams is None:
+            hyperparams = dict()
 
         self._params = dict()
         self._label_encoder = self._fit_label_encoder(self.labels)

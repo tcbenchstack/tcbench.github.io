@@ -309,6 +309,7 @@ class Progress(richprogress.Progress):
                 richprogress.TextColumn("eta"),
                 richprogress.TimeRemainingColumn(),
                 richprogress.TextColumn("[progress.description]{task.description}"),
+                speed_estimate_period=5 * 60, # retain samples for this duration
                 console=console,
             )
             self.task_id = self.add_task(description, total=total)

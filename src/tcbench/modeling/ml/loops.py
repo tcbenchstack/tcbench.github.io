@@ -5,8 +5,10 @@ import numpy as np
 import itertools
 import pathlib
 import multiprocessing
+import time
 
 from typing import Iterable, Any, Dict, Tuple, List
+from datetime import timedelta
 
 from tcbench.core import Pool1N, save_params
 from tcbench import (
@@ -168,8 +170,11 @@ def _trainer_init(
 
 def _trainer_loop_worker(
     trainer: MLTrainer
-) -> Tuple[MLTrainer, ClassificationResults | None, ClassificationResults]:
-    return trainer, *trainer.fit()
+) -> Tuple[MLTrainer, ClassificationResults | None, ClassificationResults, timedelta]:
+    t1 = time.time()
+    res = trainer.fit()
+    t2 = time.time()
+    return trainer, *res, timedelta(seconds=round(t2-t1, ndigits=0))
 
 
 def _trainer_loop(
@@ -192,6 +197,9 @@ def _trainer_loop(
         richutils.LiveTableColumn(
             name="f1_test", fmt=".5f", track="max", summary="avg"
         ),
+        richutils.LiveTableColumn(
+            name="elapsed"
+        )
     ]
     if not track_train:
         table_columns.pop(1)
@@ -216,13 +224,14 @@ def _trainer_loop(
             maxtasksperchild=1
         ) as pool,
     ):
-        for trainer, clsres_train, clsres_test in (
+        for trainer, clsres_train, clsres_test, elapsed in (
             pool.imap_unordered(_trainer_loop_worker, trainers)
         ): 
             trainer.save()
             row = dict(
                 split_index=clsres_test.split_index,
                 f1_test=clsres_test.weighted_f1,
+                elapsed=str(elapsed)
             )
             if clsres_train is not None:
                 row["f1_train"] = clsres_train.weighted_f1
@@ -230,7 +239,8 @@ def _trainer_loop(
             if save_to is not None:
                 cli.logger.log(
                     f"split_index: {clsres_test.split_index} "
-                    f"f1_test: {clsres_test.weighted_f1}",
+                    f"f1_test: {clsres_test.weighted_f1:.5f} "
+                    f"elapsed: {elapsed}",
                     echo=False,
                     file_shortname="_grid_output_"
                 )

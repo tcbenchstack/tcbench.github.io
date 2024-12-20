@@ -1,6 +1,7 @@
 from tcbench.modeling import columns
 
-from tcbench.modeling.factory import mlmodel_factory
+from tcbench.modeling.ml.classifiers import factory as mlmodel_factory
+
 
 from tcbench.modeling.enums import (
     MODELING_DATASET_TYPE,

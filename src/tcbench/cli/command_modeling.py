@@ -15,8 +15,9 @@ from tcbench.modeling.ml import loops
 from tcbench.modeling import (
     MODELING_FEATURE,
     MODELING_METHOD_NAME,
-    factory,
+    mlmodel_factory,
 )
+
 
 
 @click.group()
@@ -236,7 +237,7 @@ def docs(
 
     from tcbench.cli.richutils import console
 
-    mdl = factory.mlmodel_factory(
+    mdl = mlmodel_factory(
         name=method_name,
         labels=["a"],
         features=[MODELING_FEATURE.PKTS_SIZE],
